@@ -14,6 +14,8 @@ import { ReqThinkingBlock } from "@/components/ReqThinkingBlock";
 import { ReqToolCard } from "@/components/ReqToolCard";
 import styles from "./ReqAgentComponentGallery.module.css";
 
+import type { AgentActivity, ToolExecutionState } from "@/lib/types";
+
 type ComponentStage = "base" | "deferred";
 
 const componentInventory: Array<{
@@ -420,6 +422,71 @@ export function ReqAgentComponentGallery() {
           </GallerySection>
         </div>
 
+        <GallerySection
+          tag="10"
+          title="Agent Activity States"
+          description="AgentActivity 的所有变体——用 ReqThinkingBlock 静态预览每种状态在 UI 中的表现。"
+        >
+          <div className={styles.previewStack}>
+            <AgentActivityPreview activity="idle" />
+            <AgentActivityPreview activity="thinking" />
+            <AgentActivityPreview activity="responding" />
+            <AgentActivityPreview activity="tool_calling" />
+            <AgentActivityPreview activity="reading" />
+            <AgentActivityPreview activity="searching" />
+            <AgentActivityPreview activity="handoff" />
+            <AgentActivityPreview activity="error" />
+          </div>
+        </GallerySection>
+
+        <GallerySection
+          tag="11"
+          title="Tool Execution Lifecycle"
+          description="ToolExecutionState 的每种状态对应到 ReqToolCard 的视觉表现。"
+        >
+          <div className={styles.previewStack}>
+            <ToolExecutionPreview state="pending" />
+            <ToolExecutionPreview state="running" />
+            <ToolExecutionPreview state="streaming" />
+            <ToolExecutionPreview state="success" />
+            <ToolExecutionPreview state="error" />
+          </div>
+        </GallerySection>
+
+        <GallerySection
+          tag="12"
+          title="State Flow Demo"
+          description="模拟完整执行流：用户消息 → thinking → tool call → 回复。这就是首页真实对话的骨架。"
+        >
+          <div className={styles.previewStack}>
+            <ReqMessage role="user">帮我拆解一个用户登录注册模块的需求。</ReqMessage>
+            <ReqThinkingBlock
+              agent="Orchestrator"
+              elapsedLabel="1.8s"
+              mode="completed"
+              onToggle={() => {}}
+              open={false}
+              phaseLabel="判断信息充分性"
+              summary="信息足够，准备进入拆解阶段。"
+            />
+            <ReqToolCard
+              description="按 Must / Should / Could 生成用户故事。"
+              metrics={[
+                { label: "total", value: "5" },
+                { label: "must", value: "2" },
+                { label: "should", value: "2" },
+                { label: "could", value: "1" },
+              ]}
+              name="generate_stories"
+              status="complete"
+              summary="已生成 5 个用户故事。"
+            />
+            <ReqMessage role="assistant">
+              已完成需求拆解，共生成 5 个用户故事，其中 2 个 Must、2 个 Should、1 个 Could。右侧产物列表已更新。
+            </ReqMessage>
+          </div>
+        </GallerySection>
+
         <div className={styles.footerBar}>
           <span>ReqAgent shared component gallery</span>
           <Link className={styles.footerLink} href="/">
@@ -463,4 +530,54 @@ function StagePill({ stage }: { stage: ComponentStage }) {
   } as const;
 
   return <span className={`${styles.stagePill} ${stage === "base" ? styles.stage_v0_now : styles.stage_later}`}>{labels[stage]}</span>;
+}
+
+// ---------------------------------------------------------------------------
+// Gallery preview helpers for agent state sections
+// ---------------------------------------------------------------------------
+
+const activityMeta: Record<AgentActivity, { label: string; mode: "running" | "completed" | "failed"; phase: string }> = {
+  idle: { label: "空闲", mode: "completed", phase: "待命" },
+  thinking: { label: "推理中", mode: "running", phase: "推理" },
+  responding: { label: "回复中", mode: "running", phase: "生成" },
+  tool_calling: { label: "调用工具", mode: "running", phase: "工具" },
+  reading: { label: "读取中", mode: "running", phase: "读取" },
+  searching: { label: "搜索中", mode: "running", phase: "搜索" },
+  handoff: { label: "移交中", mode: "running", phase: "移交" },
+  error: { label: "出错", mode: "failed", phase: "异常" },
+};
+
+function AgentActivityPreview({ activity }: { activity: AgentActivity }) {
+  const meta = activityMeta[activity];
+  return (
+    <ReqThinkingBlock
+      agent="Orchestrator"
+      elapsedLabel={meta.mode === "running" ? "..." : "—"}
+      mode={meta.mode}
+      onToggle={() => {}}
+      open={false}
+      phaseLabel={meta.phase}
+      summary={`${activity} — ${meta.label}`}
+    />
+  );
+}
+
+const toolStateMeta: Record<ToolExecutionState, { status: "running" | "complete" | "incomplete"; label: string }> = {
+  pending: { status: "running", label: "等待执行" },
+  running: { status: "running", label: "执行中" },
+  streaming: { status: "running", label: "流式输出中" },
+  success: { status: "complete", label: "执行成功" },
+  error: { status: "incomplete", label: "执行失败" },
+};
+
+function ToolExecutionPreview({ state }: { state: ToolExecutionState }) {
+  const meta = toolStateMeta[state];
+  return (
+    <ReqToolCard
+      description={`ToolExecutionState: ${state}`}
+      name="example_tool"
+      status={meta.status}
+      summary={meta.label}
+    />
+  );
 }
