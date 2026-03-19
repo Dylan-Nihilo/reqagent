@@ -1,502 +1,151 @@
-import { createUIMessageStream, createUIMessageStreamResponse, type UIMessageStreamWriter } from "ai";
 import {
-  buildConversationText,
-  buildFailureMessage,
-  buildStageSequence,
-  classifyWorkflowError,
-  createRunState,
-  detectRequestedStage,
-  evaluateClarification,
-  generateDocument,
-  generateStories,
-  parseRequirement,
-  resolveExecutionPlan,
-  searchKnowledge,
-  summarizeFinalResult,
-} from "@/lib/workflow";
-import { reqAgentToolNames } from "@/lib/tools";
-import {
-  type ReqAgentErrorKind,
-  getLatestReqAgentThreadState,
-  type ReqAgentRole,
-  type ReqAgentStage,
-  type ReqAgentThreadState,
-  type ReqAgentUIMessage,
-} from "@/lib/types";
+  convertToModelMessages,
+  streamText,
+  tool,
+  jsonSchema,
+  stepCountIs,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+} from "ai";
+import { getProviderInfo, reqAgentModel } from "@/lib/ai-provider";
+import { searchKnowledgePatterns, detectDomain } from "@/lib/tools";
 
 export const maxDuration = 60;
 
-type RequestBody = {
-  messages?: ReqAgentUIMessage[];
-};
+// ---------------------------------------------------------------------------
+// Simulated tool call — hand-crafted stream to test the tool UI
+// Triggered by messages containing "test tools" or "测试工具"
+// ---------------------------------------------------------------------------
 
-type ToolName = (typeof reqAgentToolNames)[keyof typeof reqAgentToolNames];
+function simulateToolCallStream(userText: string): Response {
+  const domain = detectDomain(userText);
+  const knowledgeResult = searchKnowledgePatterns(userText, domain);
 
-function createRunId() {
-  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? `run-${crypto.randomUUID()}`
-    : `run-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-}
+  const stream = createUIMessageStream({
+    execute: async ({ writer }) => {
+      const w = (part: Record<string, unknown>) => writer.write(part as never);
 
-function writeText(writer: UIMessageStreamWriter<ReqAgentUIMessage>, text: string) {
-  const id = `text-${createRunId()}`;
-  writer.write({ type: "text-start", id });
-  writer.write({ type: "text-delta", id, delta: text });
-  writer.write({ type: "text-end", id });
-}
+      w({ type: "start" });
+      w({ type: "start-step" });
 
-function updateStageState(
-  state: ReqAgentThreadState,
-  {
-    stage,
-    role,
-    workflowStatus,
-    stageStatus,
-    publicThinking,
-    threadTitle,
-    errorKind,
-    errorMessage,
-  }: {
-    stage: ReqAgentStage | null;
-    role: ReqAgentRole | null;
-    workflowStatus: ReqAgentThreadState["workflowStatus"];
-    stageStatus?: ReqAgentThreadState["pipeline"][ReqAgentStage];
-    publicThinking: string;
-    threadTitle?: string;
-    errorKind?: ReqAgentErrorKind;
-    errorMessage?: string;
-  },
-) {
-  return {
-    ...state,
-    workflowStatus,
-    activeStage: stage,
-    activeRole: role,
-    publicThinking,
-    threadTitle: threadTitle ?? state.threadTitle,
-    pipeline:
-      stage && stageStatus
-        ? {
-            ...state.pipeline,
-            [stage]: stageStatus,
-          }
-        : state.pipeline,
-    errorKind,
-    errorMessage,
-  };
-}
+      w({
+        type: "tool-input-start",
+        toolCallId: "tc_search_001",
+        toolName: "search_knowledge",
+      });
 
-function writeMetadata(writer: UIMessageStreamWriter<ReqAgentUIMessage>, state: ReqAgentThreadState) {
-  writer.write({
-    type: "message-metadata",
-    messageMetadata: state,
-  });
-}
+      w({
+        type: "tool-input-available",
+        toolCallId: "tc_search_001",
+        toolName: "search_knowledge",
+        input: { query: userText, domain },
+      });
 
-function writeToolStart(
-  writer: UIMessageStreamWriter<ReqAgentUIMessage>,
-  toolName: ToolName,
-  input: unknown,
-) {
-  const toolCallId = `${toolName}-${createRunId()}`;
+      await new Promise((r) => setTimeout(r, 1500));
 
-  writer.write({
-    type: "tool-input-start",
-    toolCallId,
-    toolName,
-  });
-  writer.write({
-    type: "tool-input-available",
-    toolCallId,
-    toolName,
-    input,
+      w({
+        type: "tool-output-available",
+        toolCallId: "tc_search_001",
+        output: knowledgeResult,
+      });
+
+      w({ type: "finish-step" });
+
+      w({ type: "start-step" });
+      const id = "summary_001";
+      w({ type: "text-start", id });
+
+      const summary =
+        `根据知识库搜索（来源: ${knowledgeResult.source}，相关度: ${knowledgeResult.relevance}）：\n\n` +
+        `> ${knowledgeResult.pattern}\n\n` +
+        `这些是${domain === "default" ? "通用 SaaS" : domain}领域的常见模式，可以基于此进一步拆解。`;
+
+      const chunks = summary.match(/.{1,20}/g) ?? [summary];
+      for (const chunk of chunks) {
+        w({ type: "text-delta", id, delta: chunk });
+        await new Promise((r) => setTimeout(r, 50));
+      }
+
+      w({ type: "text-end", id });
+      w({ type: "finish-step" });
+      w({ type: "finish", finishReason: "stop" });
+    },
   });
 
-  return toolCallId;
+  return createUIMessageStreamResponse({ stream });
 }
 
-function writeToolSuccess(
-  writer: UIMessageStreamWriter<ReqAgentUIMessage>,
-  toolCallId: string,
-  output: unknown,
-) {
-  writer.write({
-    type: "tool-output-available",
-    toolCallId,
-    output,
-  });
-}
+// ---------------------------------------------------------------------------
+// Main handler
+// ---------------------------------------------------------------------------
 
-function writeToolFailure(
-  writer: UIMessageStreamWriter<ReqAgentUIMessage>,
-  toolCallId: string,
-  errorText: string,
-) {
-  writer.write({
-    type: "tool-output-error",
-    toolCallId,
-    errorText,
-  });
-}
-
-function extractLatestUserText(messages: ReqAgentUIMessage[]) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-
-    if (message.role !== "user") {
-      continue;
-    }
-
-    const text = (message.parts ?? [])
-      .filter((part): part is (typeof message.parts)[number] & { type: "text"; text: string } => part.type === "text" && "text" in part && typeof part.text === "string")
-      .map((part) => part.text.trim())
-      .filter(Boolean)
-      .join("\n")
-      .trim();
-
-    if (text) {
-      return text;
+function getLastUserText(messages: Array<{ role: string; parts?: Array<{ type: string; text?: string }> }>): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user") {
+      return (messages[i].parts ?? [])
+        .filter((p) => p.type === "text" && p.text)
+        .map((p) => p.text!)
+        .join("\n");
     }
   }
-
   return "";
 }
 
 export async function POST(req: Request) {
-  const { messages }: RequestBody = await req.json();
+  const { messages } = await req.json();
+  const lastText = getLastUserText(messages);
 
-  if (!messages || messages.length === 0) {
-    return new Response("Missing messages", { status: 400 });
+  // Simulated tool call for UI testing
+  if (/test.?tool|测试工具/i.test(lastText)) {
+    return simulateToolCallStream(lastText);
   }
 
-  const latestUserText = extractLatestUserText(messages);
-  if (!latestUserText) {
-    return new Response("Missing user text", { status: 400 });
-  }
+  const providerInfo = getProviderInfo();
 
-  const previousState = getLatestReqAgentThreadState(messages);
-  const runId = createRunId();
-  const conversationText = buildConversationText(messages);
-
-  const stream = createUIMessageStream<ReqAgentUIMessage>({
-    execute: async ({ writer }) => {
-      let state = createRunState(previousState, runId, latestUserText);
-
-      writer.write({
-        type: "start",
-        messageMetadata: state,
-      });
-
-      try {
-        const requestedStage = detectRequestedStage(latestUserText);
-        const shouldClarify =
-          requestedStage == null ||
-          requestedStage === "parse" ||
-          (requestedStage === "decompose" && !previousState?.artifacts.brief) ||
-          (requestedStage === "document" && !previousState?.artifacts.stories);
-
-        console.error("[reqagent] request received", {
-          requestedStage,
-          shouldClarify,
-          latestUserText,
-          previousRunId: previousState?.runId ?? null,
-        });
-
-        if (shouldClarify) {
-          console.error("[reqagent] stage start", { stage: "clarify" });
-          state = updateStageState(state, {
-            stage: "clarify",
-            role: "Orchestrator",
-            workflowStatus: "running",
-            stageStatus: "running",
-            publicThinking: "正在判断当前信息是否足够进入需求分析流程。",
-            errorKind: undefined,
-            errorMessage: undefined,
-          });
-          writeMetadata(writer, state);
-
-          const clarification = await evaluateClarification({
-            latestUserText,
-            conversationText,
-            previousState,
-          });
-          console.error("[reqagent] stage complete", {
-            stage: "clarify",
-            needsClarification: clarification.needsClarification,
-          });
-
-          if (clarification.needsClarification) {
-            state = updateStageState(state, {
-              stage: "clarify",
-              role: "Orchestrator",
-              workflowStatus: "awaiting_input",
-              stageStatus: "awaiting_input",
-              publicThinking: clarification.publicThinking,
-              threadTitle: clarification.threadTitle,
-              errorKind: undefined,
-              errorMessage: undefined,
-            });
-            writeMetadata(writer, state);
-            writeText(writer, clarification.questions.map((question, index) => `${index + 1}. ${question}`).join("\n"));
-            writer.write({
-              type: "finish",
-              finishReason: "stop",
-              messageMetadata: state,
-            });
-            return;
-          }
-
-          state = updateStageState(state, {
-            stage: "clarify",
-            role: "Orchestrator",
-            workflowStatus: "running",
-            stageStatus: "complete",
-            publicThinking: clarification.publicThinking,
-            threadTitle: clarification.threadTitle,
-            errorKind: undefined,
-            errorMessage: undefined,
-          });
-          writeMetadata(writer, state);
-        }
-
-        const { mode, startStage } = resolveExecutionPlan(previousState, latestUserText, requestedStage);
-        const stageSequence = buildStageSequence(startStage, mode);
-        let brief = previousState?.artifacts.brief;
-        let stories = previousState?.artifacts.stories;
-
-        for (const stage of stageSequence) {
-          if (stage === "parse") {
-            console.error("[reqagent] stage start", { stage });
-            state = updateStageState(state, {
-              stage,
-              role: "InputParser",
-              workflowStatus: "running",
-              stageStatus: "running",
-              publicThinking: "InputParser 正在把当前线程需求整理成结构化 brief。",
-              errorKind: undefined,
-              errorMessage: undefined,
-            });
-            writeMetadata(writer, state);
-
-            const toolCallId = writeToolStart(writer, reqAgentToolNames.parseInput, {
-              raw_input: latestUserText,
-              conversation: conversationText,
-            });
-
-            try {
-              brief = await parseRequirement({
-                latestUserText,
-                conversationText,
-                previousState,
-              });
-              console.error("[reqagent] stage complete", { stage, projectName: brief.projectName });
-              writeToolSuccess(writer, toolCallId, brief);
-            } catch (error) {
-              writeToolFailure(writer, toolCallId, error instanceof Error ? error.message : "parse_input failed");
-              throw error;
-            }
-
-            state = {
-              ...updateStageState(state, {
-                stage,
-                role: "InputParser",
-                workflowStatus: "running",
-                stageStatus: "complete",
-                publicThinking: "结构化 brief 已更新，正在准备后续拆解。",
-                threadTitle: brief.projectName,
-                errorKind: undefined,
-                errorMessage: undefined,
-              }),
-              artifacts: {
-                ...state.artifacts,
-                brief,
-              },
-            };
-            writeMetadata(writer, state);
-            continue;
-          }
-
-          if (stage === "decompose") {
-            console.error("[reqagent] stage start", { stage });
-            if (!brief) {
-              throw new Error("Missing brief before decompose stage.");
-            }
-
-            state = updateStageState(state, {
-              stage,
-              role: "ReqDecomposer",
-              workflowStatus: "running",
-              stageStatus: "running",
-              publicThinking: "ReqDecomposer 正在检索模式并拆解用户故事。",
-              errorKind: undefined,
-              errorMessage: undefined,
-            });
-            writeMetadata(writer, state);
-
-            const knowledgeCallId = writeToolStart(writer, reqAgentToolNames.searchKnowledge, {
-              query: `${brief.projectName} ${brief.coreFeatures.join(" ")}`.trim(),
-            });
-            const knowledgeQuery = `${brief.projectName} ${brief.coreFeatures.join(" ")}`.trim();
-            let knowledge: ReturnType<typeof searchKnowledge>;
-
-            try {
-              knowledge = searchKnowledge(knowledgeQuery);
-              console.error("[reqagent] stage progress", { stage, tool: "search_knowledge" });
-              writeToolSuccess(writer, knowledgeCallId, knowledge);
-            } catch (error) {
-              writeToolFailure(writer, knowledgeCallId, error instanceof Error ? error.message : "search_knowledge failed");
-              throw error;
-            }
-
-            const storiesCallId = writeToolStart(writer, reqAgentToolNames.generateStories, {
-              project_name: brief.projectName,
-            });
-
-            try {
-              const result = await generateStories({
-                latestUserText,
-                requirement: brief,
-                previousState,
-                knowledge,
-              });
-              stories = result.stories;
-              console.error("[reqagent] stage complete", { stage, stories: stories.total });
-              writeToolSuccess(writer, storiesCallId, stories);
-            } catch (error) {
-              writeToolFailure(writer, storiesCallId, error instanceof Error ? error.message : "generate_stories failed");
-              throw error;
-            }
-
-            state = {
-              ...updateStageState(state, {
-                stage,
-                role: "ReqDecomposer",
-                workflowStatus: "running",
-                stageStatus: "complete",
-                publicThinking: "用户故事已更新，正在整理最终交付。",
-                errorKind: undefined,
-                errorMessage: undefined,
-              }),
-              artifacts: {
-                ...state.artifacts,
-                stories,
-              },
-            };
-            writeMetadata(writer, state);
-            continue;
-          }
-
-          if (stage === "document") {
-            console.error("[reqagent] stage start", { stage });
-            if (!brief || !stories) {
-              throw new Error("Missing brief or stories before document stage.");
-            }
-
-            state = updateStageState(state, {
-              stage,
-              role: "DocGenerator",
-              workflowStatus: "running",
-              stageStatus: "running",
-              publicThinking: "DocGenerator 正在生成 Markdown 需求文档。",
-              errorKind: undefined,
-              errorMessage: undefined,
-            });
-            writeMetadata(writer, state);
-
-            const toolCallId = writeToolStart(writer, reqAgentToolNames.generateDoc, {
-              projectName: brief.projectName,
-            });
-
-            try {
-              const doc = await generateDocument({
-                latestUserText,
-                requirement: brief,
-                stories,
-                previousState,
-              });
-              console.error("[reqagent] stage complete", { stage, charCount: doc.charCount });
-              writeToolSuccess(writer, toolCallId, doc);
-              state = {
-                ...state,
-                artifacts: {
-                  ...state.artifacts,
-                  doc,
-                },
-              };
-            } catch (error) {
-              writeToolFailure(writer, toolCallId, error instanceof Error ? error.message : "generate_doc failed");
-              throw error;
-            }
-
-            state = updateStageState(state, {
-              stage,
-              role: "DocGenerator",
-              workflowStatus: "running",
-              stageStatus: "complete",
-              publicThinking: "需求文档已生成，正在整理最终回复。",
-              errorKind: undefined,
-              errorMessage: undefined,
-            });
-            writeMetadata(writer, state);
-          }
-        }
-
-        state = updateStageState(state, {
-          stage: stageSequence.at(-1) ?? null,
-          role:
-            stageSequence.at(-1) === "document"
-              ? "DocGenerator"
-              : stageSequence.at(-1) === "decompose"
-                ? "ReqDecomposer"
-                : stageSequence.at(-1) === "parse"
-                  ? "InputParser"
-                  : "Orchestrator",
-          workflowStatus: "completed",
-          publicThinking: "本轮需求分析已完成。",
-          errorKind: undefined,
-          errorMessage: undefined,
-        });
-        writeMetadata(writer, state);
-        writeText(writer, summarizeFinalResult(stageSequence, state.artifacts));
-        writer.write({
-          type: "finish",
-          finishReason: "stop",
-          messageMetadata: state,
-        });
-      } catch (error) {
-        const failure = classifyWorkflowError(error);
-        console.error("[reqagent] workflow failed", {
-          stage: state.activeStage,
-          role: state.activeRole,
-          errorKind: failure.kind,
-          error,
-        });
-        state = updateStageState(state, {
-          stage: state.activeStage,
-          role: state.activeRole,
-          workflowStatus: "failed",
-          stageStatus: state.activeStage ? "failed" : undefined,
-          publicThinking: buildFailureMessage(state.activeStage, failure.kind),
-          errorKind: failure.kind,
-          errorMessage: failure.message,
-        });
-        writeMetadata(writer, state);
-        writeText(
-          writer,
-          failure.message && failure.message !== buildFailureMessage(state.activeStage, failure.kind)
-            ? `${buildFailureMessage(state.activeStage, failure.kind)}\n\n错误详情：${failure.message}`
-            : buildFailureMessage(state.activeStage, failure.kind),
-        );
-        writer.write({
-          type: "finish",
-          finishReason: "error",
-          messageMetadata: state,
-        });
-      }
+  const result = streamText({
+    model: reqAgentModel,
+    system: `你是 ReqAgent，一个 AI 需求分析助手。用中文回复。
+当用户描述产品需求时，调用 search_knowledge 工具搜索领域知识后再回复。`,
+    messages: await convertToModelMessages(messages, {
+      ignoreIncompleteToolCalls: true,
+    }),
+    tools: {
+      search_knowledge: tool({
+        description: "Search knowledge base for domain patterns. Call when user describes requirements.",
+        inputSchema: jsonSchema<{ query: string }>({
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+        }),
+        execute: async ({ query }) => searchKnowledgePatterns(query, detectDomain(query)),
+      }),
+    },
+    stopWhen: stepCountIs(3),
+    providerOptions: {
+      openai: { store: providerInfo.wireApi === "responses" ? true : undefined },
     },
   });
 
-  return createUIMessageStreamResponse({
-    stream,
+  return result.toUIMessageStreamResponse({
+    sendReasoning: true,
+    messageMetadata: ({ part }) => {
+      const base = { wireApi: providerInfo.wireApi, model: providerInfo.model };
+      switch (part.type) {
+        case "tool-input-start":
+        case "tool-call":
+          return { ...base, agentActivity: "tool_calling", phaseLabel: "工具调用" };
+        case "tool-result":
+        case "tool-error":
+          return { ...base, agentActivity: "responding", phaseLabel: "整理结果" };
+        case "text-start":
+        case "text-delta":
+          return { ...base, agentActivity: "responding", phaseLabel: "生成回复" };
+        case "reasoning-start":
+        case "reasoning-delta":
+          return { ...base, agentActivity: "thinking", phaseLabel: "推理" };
+        default:
+          return { ...base, agentActivity: "responding", phaseLabel: "对话" };
+      }
+    },
   });
 }
