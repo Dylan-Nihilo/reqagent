@@ -1,34 +1,46 @@
 "use client";
 
 import { makeAssistantToolUI } from "@assistant-ui/react";
-import { useEffect } from "react";
-import { normalizeToolStatus } from "@/lib/types";
+import { ReqAgentToolCard } from "@/components/ReqAgentToolCard";
+import { normalizeToolStatus, type StructuredRequirement } from "@/lib/types";
 
 type Props = {
+  result?: StructuredRequirement;
   status: "running" | "complete" | "incomplete";
 };
 
-function ParseInputStatus({ status }: Props) {
-  useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent("reqagent:artifact", {
-        detail: {
-          kind: "phase",
-          tool: "parse_input",
-          status: status === "running" ? "running" : "complete",
-        },
-      }),
-    );
-  }, [status]);
+function ParseInputStatus({ result, status }: Props) {
+  const summary =
+    status === "running"
+      ? "正在把原始需求整理成结构化 brief。"
+      : status === "incomplete"
+        ? "输入解析已中断，结构化 brief 尚未完整产出。"
+        : result
+          ? `已识别 ${result.projectName} 的核心角色、能力和歧义点。`
+          : "输入解析已完成。";
 
   return (
-    <div className="my-3 rounded-2xl border border-sky-300/15 bg-sky-300/10 px-4 py-3 text-sm text-sky-100">
-      {status === "running" ? "正在解析需求输入…" : "输入解析已完成。"}
-    </div>
+    <ReqAgentToolCard
+      description="把原始需求转换成结构化 brief，供下游 Agent 继续拆解。"
+      metrics={
+        result
+          ? [
+              { label: "project", value: result.projectName },
+              { label: "users", value: String(result.targetUsers.length) },
+              { label: "ambiguities", value: String(result.ambiguities.length) },
+            ]
+          : undefined
+      }
+      name="parse_input"
+      status={status}
+      summary={summary}
+    />
   );
 }
 
 export const ParseInputToolUI = makeAssistantToolUI({
   toolName: "parse_input",
-  render: ({ status }) => <ParseInputStatus status={normalizeToolStatus(status)} />,
+  render: ({ result, status }) => (
+    <ParseInputStatus result={result as StructuredRequirement | undefined} status={normalizeToolStatus(status)} />
+  ),
 });

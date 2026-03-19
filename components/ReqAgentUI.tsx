@@ -1,167 +1,226 @@
 "use client";
 
-import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive } from "@assistant-ui/react";
-import { useEffect, useState } from "react";
+import { MessagePrimitive, ThreadPrimitive, useThread } from "@assistant-ui/react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArtifactPanel } from "@/components/ArtifactPanel";
-import { PipelineBar } from "@/components/PipelineBar";
+import { ReqComposer } from "@/components/ReqComposer";
+import { ReqEmptyState } from "@/components/ReqEmptyState";
+import { ReqMessage } from "@/components/ReqMessage";
+import { ReqAgentWorkbench } from "@/components/ReqAgentWorkbench";
+import { ReqAgentWorkbenchScene } from "@/components/ReqAgentWorkbenchScene";
+import { ReqScrollToBottom } from "@/components/ReqScrollToBottom";
+import { ReqThinkingBlock } from "@/components/ReqThinkingBlock";
 import { GenerateDocToolUI } from "@/components/tool-uis/GenerateDocToolUI";
 import { GenerateStoriesToolUI } from "@/components/tool-uis/GenerateStoriesToolUI";
 import { ParseInputToolUI } from "@/components/tool-uis/ParseInputToolUI";
 import { SearchKnowledgeToolUI } from "@/components/tool-uis/SearchKnowledgeToolUI";
-import type { ArtifactState, PipelineState, ReqAgentArtifactEvent } from "@/lib/types";
+import styles from "@/components/ReqAgentWorkbench.module.css";
+import { getLatestReqAgentThreadState, reqAgentStageLabels, type ReqAgentThreadState } from "@/lib/types";
 
-const INITIAL_PIPELINE: PipelineState = {
-  parse_input: "idle",
-  search_knowledge: "idle",
-  generate_stories: "idle",
-  generate_doc: "idle",
+type MessagePartLike = {
+  type?: string;
+  text?: string;
 };
 
-const INITIAL_ARTIFACTS: ArtifactState = {
-  activeTab: "stories",
+type MessageLike = {
+  role?: string;
+  metadata?: unknown;
+  parts?: MessagePartLike[];
 };
 
 export function ReqAgentUI() {
-  const [artifacts, setArtifacts] = useState<ArtifactState>(INITIAL_ARTIFACTS);
-  const [pipeline, setPipeline] = useState<PipelineState>(INITIAL_PIPELINE);
-  const [mobilePanel, setMobilePanel] = useState<"chat" | "artifacts">("chat");
+  const [thinkingOpen, setThinkingOpen] = useState(true);
+  const [navOpen, setNavOpen] = useState(false);
+  const [artifactsOpen, setArtifactsOpen] = useState(false);
+  const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
+  const [runEndedAt, setRunEndedAt] = useState<number | null>(null);
+  const [tick, setTick] = useState(() => Date.now());
+
+  const lastRunIdRef = useRef<string | null>(null);
+  const messages = useThread((state) => state.messages) as readonly MessageLike[];
+  const isRunning = useThread((state) => state.isRunning);
+
+  const hasConversation = messages.length > 0;
+  const threadState = useMemo(() => getLatestReqAgentThreadState(messages), [messages]);
+
+  const artifacts = threadState?.artifacts ?? {};
+  const artifactCount = Number(Boolean(artifacts.stories)) + Number(Boolean(artifacts.doc));
+  const hasArtifacts = artifactCount > 0;
+  const currentAgent = threadState?.activeRole ?? "Orchestrator";
+  const activeStage = threadState?.activeStage ?? null;
+  const workflowStatus = threadState?.workflowStatus ?? "idle";
+  const threadTitle = threadState?.threadTitle || getFallbackThreadTitle(messages);
+  const thinkingSummary = getThinkingSummary(threadState);
+  const thinkingMode = getThinkingMode(workflowStatus);
+  const elapsedLabel = formatElapsedLabel(runStartedAt, runEndedAt, tick);
 
   useEffect(() => {
-    const handleArtifact = (event: Event) => {
-      const detail = (event as CustomEvent<ReqAgentArtifactEvent>).detail;
+    const nextRunId = threadState?.runId ?? null;
+    if (!nextRunId || lastRunIdRef.current === nextRunId) {
+      return;
+    }
 
-      if (detail.kind === "stories") {
-        setArtifacts((current) => ({ ...current, stories: detail.payload, activeTab: "stories" }));
-        setMobilePanel("artifacts");
+    lastRunIdRef.current = nextRunId;
+    const now = Date.now();
+    setRunStartedAt(now);
+    setRunEndedAt(null);
+    setTick(now);
+    setThinkingOpen(true);
+  }, [threadState?.runId]);
+
+  useEffect(() => {
+    if (!threadState || workflowStatus === "idle") {
+      return;
+    }
+
+    if (runStartedAt == null) {
+      const now = Date.now();
+      setRunStartedAt(now);
+      if (workflowStatus !== "running") {
+        setRunEndedAt(now);
+      }
+      return;
+    }
+
+    if (workflowStatus === "running") {
+      setRunEndedAt(null);
+      return;
+    }
+
+    setRunEndedAt((current) => current ?? Date.now());
+  }, [threadState, workflowStatus, runStartedAt]);
+
+  useEffect(() => {
+    if (!isRunning || runStartedAt == null || runEndedAt != null) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setTick(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [isRunning, runEndedAt, runStartedAt]);
+
+  useEffect(() => {
+    if (!hasArtifacts) {
+      setArtifactsOpen(false);
+      return;
+    }
+
+    setArtifactsOpen(true);
+  }, [hasArtifacts]);
+
+  useEffect(() => {
+    if (hasConversation) {
+      return;
+    }
+
+    lastRunIdRef.current = null;
+    setNavOpen(false);
+    setArtifactsOpen(false);
+    setRunStartedAt(null);
+    setRunEndedAt(null);
+  }, [hasConversation]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
       }
 
-      if (detail.kind === "doc") {
-        setArtifacts((current) => ({ ...current, doc: detail.payload, activeTab: "doc" }));
-        setMobilePanel("artifacts");
-      }
-
-      if (detail.kind === "phase") {
-        setPipeline((current) => ({ ...current, [detail.tool]: detail.status }));
-      }
+      setNavOpen(false);
+      setArtifactsOpen(false);
+      setThinkingOpen(false);
     };
 
-    window.addEventListener("reqagent:artifact", handleArtifact);
-    return () => window.removeEventListener("reqagent:artifact", handleArtifact);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  const setActiveTab = (tab: ArtifactState["activeTab"]) => {
-    setArtifacts((current) => ({ ...current, activeTab: tab }));
-  };
+  if (!hasConversation) {
+    return (
+      <main className={styles.page}>
+        <ToolRegistry />
+        <div className={`${styles.shell} ${styles.shellLanding}`}>
+          <section className={styles.landing}>
+            <ReqEmptyState
+              description="输入一段产品目标、用户角色或功能想法。对话开始后，Agent、工具过程和产出物会按实际进展逐步出现。"
+              title="需要拆解什么需求？"
+            >
+              <ReqComposer
+                hint="shift + enter 换行"
+                placeholder="描述产品目标、用户角色、核心功能和约束条件……"
+                variant="landing"
+              />
+            </ReqEmptyState>
+          </section>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <main className="relative min-h-dvh overflow-hidden px-3 py-3 sm:px-4 sm:py-4 md:px-6 md:py-6">
-      <div className="mx-auto flex min-h-[calc(100dvh-1.5rem)] max-w-7xl flex-col overflow-hidden rounded-[24px] border border-white/10 glass sm:min-h-[calc(100dvh-2rem)] sm:rounded-[28px] md:min-h-[calc(100dvh-3rem)]">
-        <header className="border-b border-white/10 px-4 py-4 sm:px-5 md:px-7">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <div className="mb-2 flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#60a5fa,#818cf8)] font-mono text-sm font-semibold text-slate-950">
-                  RA
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.32em] text-[var(--muted)]">ReqAgent MVP</p>
-                  <h1 className="text-2xl font-semibold tracking-tight text-[var(--text)]">需求拆解工作台</h1>
-                </div>
-              </div>
-              <p className="max-w-3xl text-sm text-[var(--muted)] md:text-base">
-                这是一版可运行的需求分析 MVP。它先通过单代理工作流完成输入解析、需求拆解与文档生成，真正的多代理 handoff 放到后续阶段再做。
-              </p>
-            </div>
-            <div className="rounded-full border border-sky-300/20 bg-sky-400/10 px-4 py-2 text-xs font-medium uppercase tracking-[0.2em] text-sky-200">
-              MVP / 单代理
-            </div>
-          </div>
-        </header>
-
-        <div className="border-b border-white/10 bg-[rgba(4,14,20,0.74)] px-4 py-3 lg:hidden">
-          <div className="grid grid-cols-2 gap-2 rounded-[18px] border border-white/10 bg-white/5 p-1">
-            {[
-              { id: "chat", label: "对话" },
-              { id: "artifacts", label: "产出物" },
-            ].map((panel) => {
-              const active = mobilePanel === panel.id;
-
-              return (
-                <button
-                  key={panel.id}
-                  type="button"
-                  onClick={() => setMobilePanel(panel.id as "chat" | "artifacts")}
-                  className={[
-                    "rounded-[14px] px-3 py-2 text-sm font-medium transition",
-                    active
-                      ? "bg-[linear-gradient(135deg,rgba(96,165,250,0.18),rgba(129,140,248,0.18))] text-white"
-                      : "text-[var(--muted)]",
-                  ].join(" ")}
-                >
-                  {panel.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="grid flex-1 gap-px bg-white/8 lg:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
-          <section
-            className={[
-              "min-h-[52vh] flex-col bg-[rgba(4,14,20,0.68)] lg:flex",
-              mobilePanel === "chat" ? "flex" : "hidden",
-            ].join(" ")}
-          >
-            <div className="border-b border-white/10 px-4 py-4 sm:px-5 md:px-6">
-              <p className="text-sm font-medium text-[var(--text)]">需求对话</p>
-              <p className="mt-1 text-sm text-[var(--muted)]">输入你的产品想法，ReqAgent 会追问、拆解并生成初稿。</p>
-            </div>
-            <div className="min-h-0 flex-1 overflow-hidden px-2 py-2 sm:px-3">
-              <ToolRegistry />
-              <ThreadPrimitive.Root className="flex h-full min-h-[44vh] flex-col rounded-[20px] border border-white/10 bg-[rgba(7,19,26,0.68)] sm:rounded-[22px]">
-                <ThreadPrimitive.Viewport className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:px-4">
-                  <ThreadPrimitive.Empty>
-                    <div className="rounded-[22px] border border-dashed border-white/10 bg-white/4 p-6 text-sm leading-7 text-[var(--muted)]">
-                      从一段产品需求开始。ReqAgent 会先解析输入，再检索相似模式，接着生成用户故事与需求文档草稿。
-                    </div>
-                  </ThreadPrimitive.Empty>
-                  <ThreadPrimitive.Messages
-                    components={{
-                      UserMessage,
-                      AssistantMessage,
-                    }}
-                  />
-                </ThreadPrimitive.Viewport>
-              </ThreadPrimitive.Root>
-            </div>
-            <div className="border-t border-white/10 px-3 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-4">
-              <ComposerPrimitive.Root className="rounded-[20px] border border-white/10 bg-[rgba(4,15,22,0.95)] p-3 sm:rounded-[22px]">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                  <ComposerPrimitive.Input
-                    rows={3}
-                    placeholder="描述产品目标、用户角色、核心功能和约束条件……"
-                    className="min-h-24 w-full flex-1 resize-none border-0 bg-transparent px-2 py-1 text-sm leading-6 text-white outline-none placeholder:text-[var(--muted)]"
-                  />
-                  <ComposerPrimitive.Send className="w-full rounded-full bg-[linear-gradient(135deg,#60a5fa,#818cf8)] px-4 py-3 text-sm font-semibold text-slate-950 transition hover:opacity-90 sm:w-auto sm:py-2">
-                    发送
-                  </ComposerPrimitive.Send>
-                </div>
-              </ComposerPrimitive.Root>
-            </div>
-          </section>
-
-          <ArtifactPanel
-            artifacts={artifacts}
-            onTabChange={setActiveTab}
-            className={[
-              "lg:flex",
-              mobilePanel === "artifacts" ? "flex" : "hidden",
-            ].join(" ")}
-          />
-        </div>
-
-        <PipelineBar pipeline={pipeline} />
-      </div>
+    <main className={styles.page}>
+      <ToolRegistry />
+      <ReqAgentWorkbench
+        artifactCount={artifactCount}
+        artifactPanel={<ArtifactPanel artifacts={artifacts} />}
+        artifactsOpen={artifactsOpen}
+        currentAgent={currentAgent}
+        hasArtifacts={hasArtifacts}
+        navHint="当前会话状态完全来自 runtime metadata；多会话列表后续再接。"
+        navOpen={navOpen}
+        onArtifactsClose={() => setArtifactsOpen(false)}
+        onArtifactsToggle={() => {
+          setNavOpen(false);
+          setArtifactsOpen((value) => !value);
+        }}
+        onNavClose={() => setNavOpen(false)}
+        onNavToggle={() => {
+          setArtifactsOpen(false);
+          setNavOpen((value) => !value);
+        }}
+        threadTitle={threadTitle}
+      >
+        <ReqAgentWorkbenchScene
+          artifactsOpen={artifactsOpen}
+          composer={
+            <ReqComposer
+              hint="shift + enter 换行"
+              placeholder="继续补充需求、约束或追问方向……"
+              variant="thread"
+            />
+          }
+          hasArtifacts={hasArtifacts}
+          messages={
+            <ThreadPrimitive.Messages
+              components={{
+                UserMessage,
+                AssistantMessage,
+              }}
+            />
+          }
+          scrollToBottom={
+            <ThreadPrimitive.ScrollToBottom behavior="smooth" className={styles.scrollToBottomButton}>
+              <ReqScrollToBottom>回到底部</ReqScrollToBottom>
+            </ThreadPrimitive.ScrollToBottom>
+          }
+          thinking={
+            thinkingMode ? (
+              <ReqThinkingBlock
+                agent={currentAgent}
+                elapsedLabel={elapsedLabel}
+                mode={thinkingMode}
+                onToggle={() => setThinkingOpen((value) => !value)}
+                open={thinkingOpen}
+                phaseLabel={activeStage ? reqAgentStageLabels[activeStage] : undefined}
+                summary={thinkingSummary}
+              />
+            ) : null
+          }
+        />
+      </ReqAgentWorkbench>
     </main>
   );
 }
@@ -179,18 +238,18 @@ function ToolRegistry() {
 
 function UserMessage() {
   return (
-    <MessagePrimitive.Root className="mb-4 flex justify-end">
-      <div className="max-w-[92%] rounded-[24px] rounded-br-md bg-[linear-gradient(135deg,rgba(96,165,250,0.22),rgba(129,140,248,0.18))] px-4 py-3 text-sm leading-7 text-white shadow-[0_16px_50px_rgba(0,0,0,0.18)] sm:max-w-[85%]">
+    <MessagePrimitive.Root className={styles.messageRoot}>
+      <ReqMessage role="user">
         <MessagePrimitive.Parts />
-      </div>
+      </ReqMessage>
     </MessagePrimitive.Root>
   );
 }
 
 function AssistantMessage() {
   return (
-    <MessagePrimitive.Root className="mb-4 flex justify-start">
-      <div className="max-w-[94%] rounded-[24px] rounded-bl-md border border-white/10 bg-[rgba(10,30,39,0.96)] px-4 py-3 text-sm leading-7 text-slate-100 shadow-[0_18px_60px_rgba(0,0,0,0.16)] sm:max-w-[90%]">
+    <MessagePrimitive.Root className={styles.messageRoot}>
+      <ReqMessage role="assistant">
         <MessagePrimitive.Parts
           components={{
             tools: {
@@ -203,7 +262,78 @@ function AssistantMessage() {
             },
           }}
         />
-      </div>
+      </ReqMessage>
     </MessagePrimitive.Root>
   );
+}
+
+function getFallbackThreadTitle(messages: readonly MessageLike[]) {
+  const firstUserText = messages.find((message) => message.role === "user");
+  const text = getMessageText(firstUserText);
+  return text ? text.slice(0, 32) : "当前会话";
+}
+
+function getMessageText(message?: { parts?: MessagePartLike[] }) {
+  return (message?.parts ?? [])
+    .filter((part): part is MessagePartLike & { type: "text"; text: string } => part.type === "text" && typeof part.text === "string")
+    .map((part) => part.text.trim())
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+}
+
+function getThinkingSummary(threadState: ReqAgentThreadState | null) {
+  if (threadState?.workflowStatus === "failed" && threadState.errorMessage) {
+    return threadState.errorMessage;
+  }
+
+  if (threadState?.publicThinking && threadState.publicThinking.trim().length > 0) {
+    return threadState.publicThinking.trim();
+  }
+
+  if (threadState?.activeStage) {
+    return `当前阶段：${reqAgentStageLabels[threadState.activeStage]}`;
+  }
+
+  return "等待新的需求输入。";
+}
+
+function getThinkingMode(workflowStatus: "idle" | "running" | "awaiting_input" | "completed" | "failed") {
+  if (workflowStatus === "idle") {
+    return null;
+  }
+
+  if (workflowStatus === "running") {
+    return "running";
+  }
+
+  if (workflowStatus === "failed") {
+    return "failed";
+  }
+
+  return "completed";
+}
+
+function formatElapsedLabel(runStartedAt: number | null, runEndedAt: number | null, tick: number) {
+  if (runStartedAt == null) {
+    return "0.0s";
+  }
+
+  return formatDuration((runEndedAt ?? tick) - runStartedAt);
+}
+
+function formatDuration(elapsedMs: number) {
+  const seconds = Math.max(0, elapsedMs) / 1000;
+
+  if (seconds < 10) {
+    return `${seconds.toFixed(1)}s`;
+  }
+
+  if (seconds < 60) {
+    return `${Math.round(seconds)}s`;
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.round(seconds % 60);
+  return `${minutes}m ${remainingSeconds}s`;
 }

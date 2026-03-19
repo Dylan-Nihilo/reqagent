@@ -1,43 +1,45 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: dark;
-  --bg: #0b0f14;
-  --bg-elevated: rgba(15, 19, 26, 0.84);
-  --panel: rgba(19, 25, 34, 0.76);
-  --panel-strong: rgba(12, 17, 24, 0.94);
-  --line: rgba(148, 163, 184, 0.16);
-  --text: #eef2f7;
-  --muted: #94a3b8;
-  --accent: #60a5fa;
-  --accent-strong: #818cf8;
-  --shadow: 0 28px 80px rgba(0, 0, 0, 0.32);
+  --reqagent-bg: #f5f5f4;
+  --reqagent-bg-accent: #efefee;
+  --reqagent-panel: #ffffff;
+  --reqagent-panel-soft: #fafaf9;
+  --reqagent-panel-muted: #f2f2f1;
+  --reqagent-line: rgba(17, 17, 17, 0.08);
+  --reqagent-line-strong: rgba(17, 17, 17, 0.16);
+  --reqagent-text: #111111;
+  --reqagent-text-soft: #3f3f46;
+  --reqagent-muted: #71717a;
+  --reqagent-muted-soft: #a1a1aa;
+  --reqagent-accent-soft: rgba(17, 17, 17, 0.06);
+  --reqagent-ok: #27272a;
+  --reqagent-ok-soft: rgba(39, 39, 42, 0.08);
+  --reqagent-err: #52525b;
+  --reqagent-err-soft: rgba(82, 82, 91, 0.08);
+  --reqagent-mono:
+    "SFMono-Regular", "SF Mono", "JetBrains Mono", "Menlo", "Monaco", "Consolas",
+    "Liberation Mono", monospace;
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
-html,
+html {
+  height: 100%;
+}
+
 body {
-  margin: 0;
   min-height: 100%;
-  -webkit-text-size-adjust: 100%;
-  background:
-    radial-gradient(circle at top left, rgba(96, 165, 250, 0.14), transparent 28%),
-    radial-gradient(circle at top right, rgba(129, 140, 248, 0.12), transparent 22%),
-    linear-gradient(180deg, #0b0f14 0%, #090d12 100%);
-  color: var(--text);
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-}
-
-body {
-  min-height: 100vh;
-  overflow-x: hidden;
-}
-
-a {
-  color: inherit;
+  margin: 0;
+  background: var(--reqagent-bg);
+  color: var(--reqagent-text);
+  font-family:
+    "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  text-rendering: optimizeLegibility;
 }
 
 button,
@@ -46,13 +48,6 @@ textarea {
   font: inherit;
 }
 
-.glass {
-  backdrop-filter: blur(22px);
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow);
-}
-
-.artifact-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(124, 227, 208, 0.35) transparent;
+a {
+  color: inherit;
 }

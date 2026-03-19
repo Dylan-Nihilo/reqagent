@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ReqAgent · 需求拆解助手",
-  description: "面向需求分析与 User Story 生成的智能工作台。",
+  title: "ReqAgent v0 · 需求拆解助手",
+  description: "基于 OpenAI Agents SDK handoff 的需求分析工作台。",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

@@ -1,15 +1,28 @@
-import { tool } from "ai";
 import { z } from "zod";
 import type {
   DocumentGenerationResult,
   KnowledgeSearchResult,
   StoryGenerationResult,
-  StructuredRequirement,
   StoryPriority,
+  StructuredRequirement,
   UserStory,
 } from "@/lib/types";
 
-const parseOutputSchema = z.object({
+export const reqAgentToolNames = {
+  parseInput: "parse_input",
+  searchKnowledge: "search_knowledge",
+  generateStories: "generate_stories",
+  generateDoc: "generate_doc",
+} as const;
+
+export const clarifyDecisionSchema = z.object({
+  needsClarification: z.boolean(),
+  questions: z.array(z.string()).max(2),
+  threadTitle: z.string().min(1).max(48),
+  publicThinking: z.string().min(1).max(120),
+});
+
+export const parseResultSchema = z.object({
   projectName: z.string(),
   rawSummary: z.string(),
   entities: z.array(z.string()),
@@ -19,13 +32,16 @@ const parseOutputSchema = z.object({
   ambiguities: z.array(z.string()),
 });
 
-const storySchema = z.object({
-  id: z.string().describe("Use US-001 style identifiers."),
+export const generatedStoryDraftSchema = z.object({
   role: z.string(),
   want: z.string(),
   soThat: z.string(),
-  priority: z.enum(["must", "should", "could"]),
-  acceptanceCriteria: z.array(z.string().describe("Use Given / When / Then phrasing.")),
+  acceptanceCriteria: z.array(z.string()).min(1),
+});
+
+export const generateStoriesSchema = z.object({
+  projectName: z.string(),
+  stories: z.array(generatedStoryDraftSchema).min(1),
 });
 
 const docSchema = z.object({
@@ -40,14 +56,38 @@ const knowledgePatterns: Record<string, string> = {
     "Ecommerce systems usually include catalog, checkout, payment, order status, promotions, and customer support workflows.",
   productivity:
     "Productivity SaaS patterns include workspace setup, permissions, task flows, notifications, reporting, and integrations.",
+  fintech:
+    "Fintech systems usually need account security, transaction history, compliance checks, risk controls, reconciliation, and notification flows.",
   default:
     "General SaaS patterns usually cover onboarding, user management, permissions, dashboards, notifications, and external integrations.",
 };
 
-function detectProjectName(rawInput: string) {
+export function detectProjectName(rawInput: string) {
   const cleaned = rawInput.replace(/\s+/g, " ").trim();
   if (!cleaned) return "Untitled Project";
   return cleaned.slice(0, 48);
+}
+
+export function detectDomain(text: string) {
+  const source = text.toLowerCase();
+
+  if (source.includes("教育") || source.includes("课程") || source.includes("student") || source.includes("teacher")) {
+    return "education";
+  }
+
+  if (source.includes("商城") || source.includes("电商") || source.includes("ecommerce") || source.includes("buyer")) {
+    return "ecommerce";
+  }
+
+  if (source.includes("workspace") || source.includes("任务") || source.includes("协作") || source.includes("productivity")) {
+    return "productivity";
+  }
+
+  if (source.includes("支付") || source.includes("wallet") || source.includes("fintech") || source.includes("交易")) {
+    return "fintech";
+  }
+
+  return "default";
 }
 
 function pickPriority(index: number, total: number): StoryPriority {
@@ -56,96 +96,58 @@ function pickPriority(index: number, total: number): StoryPriority {
   return "could";
 }
 
-export const parseInputTool = tool({
-  description: "Parse raw user input into a structured requirement brief.",
-  parameters: z.object({
-    raw_input: z.string().describe("The user's requirement description."),
-  }),
-  execute: async ({ raw_input }): Promise<StructuredRequirement> => {
-    const lines = raw_input
-      .split(/\n+/)
-      .map((line) => line.trim())
-      .filter(Boolean);
+export function searchKnowledgePatterns(query: string, domain?: string): KnowledgeSearchResult {
+  const sourceKey = (domain ?? query).toLowerCase();
+  const key = Object.keys(knowledgePatterns).find((entry) => sourceKey.includes(entry)) ?? detectDomain(sourceKey);
 
-    const entities = Array.from(
-      new Set(raw_input.match(/[A-Za-z][A-Za-z0-9-]{2,}/g)?.slice(0, 8) ?? []),
-    );
+  return {
+    source: "seeded-pattern-library",
+    pattern: knowledgePatterns[key] ?? knowledgePatterns.default,
+    relevance: key === "default" ? 0.72 : 0.89,
+  };
+}
 
-    const targetUsers = /(student|teacher|admin|buyer|seller|manager|user|家长|学生|老师)/gi.test(raw_input)
-      ? Array.from(new Set(raw_input.match(/student|teacher|admin|buyer|seller|manager|user|家长|学生|老师/gi) ?? []))
-      : ["end users"];
+export function buildStoryGenerationResult(projectName: string, stories: Array<Omit<UserStory, "id" | "priority"> & Partial<Pick<UserStory, "id" | "priority">>>): StoryGenerationResult {
+  const normalizedStories: UserStory[] = stories.map((story, index) => ({
+    ...story,
+    id: story.id || `US-${String(index + 1).padStart(3, "0")}`,
+    priority: story.priority ?? pickPriority(index, stories.length),
+  }));
 
-    const requirement: StructuredRequirement = {
-      projectName: detectProjectName(lines[0] ?? raw_input),
-      rawSummary: lines.join(" ") || raw_input,
-      entities,
-      targetUsers,
-      coreFeatures: lines.slice(0, 5),
-      constraints: raw_input.includes("must") || raw_input.includes("必须") ? ["Contains explicit must-have constraints"] : [],
-      ambiguities:
-        targetUsers.length === 0 || !raw_input.match(/budget|timeline|约束|限制|并发|security|integrat/i)
-          ? ["Clarify business constraints, success metrics, and timeline if they matter."]
-          : [],
-    };
+  return {
+    projectName,
+    total: normalizedStories.length,
+    stories: normalizedStories,
+    summary: {
+      must: normalizedStories.filter((story) => story.priority === "must").length,
+      should: normalizedStories.filter((story) => story.priority === "should").length,
+      could: normalizedStories.filter((story) => story.priority === "could").length,
+    },
+  };
+}
 
-    return parseOutputSchema.parse(requirement);
-  },
-});
+export function buildDocumentGenerationResult(projectName: string, content: string): DocumentGenerationResult {
+  return docSchema.parse({
+    projectName,
+    content,
+  }) as DocumentGenerationResult & { charCount?: never };
+}
 
-export const searchKnowledgeTool = tool({
-  description: "Look up requirement patterns and best-practice references for a domain.",
-  parameters: z.object({
-    query: z.string(),
-    domain: z.string().optional(),
-  }),
-  execute: async ({ query, domain }): Promise<KnowledgeSearchResult> => {
-    const sourceKey = (domain ?? query).toLowerCase();
-    const key = Object.keys(knowledgePatterns).find((entry) => sourceKey.includes(entry)) ?? "default";
+export function withDocumentMetrics(projectName: string, content: string): DocumentGenerationResult {
+  const result = buildDocumentGenerationResult(projectName, content);
 
-    return {
-      source: "seeded-pattern-library",
-      pattern: knowledgePatterns[key],
-      relevance: key === "default" ? 0.72 : 0.89,
-    };
-  },
-});
+  return {
+    ...result,
+    format: "markdown",
+    charCount: content.length,
+  };
+}
 
-export const generateStoriesTool = tool({
-  description: "Emit structured user stories with priorities and acceptance criteria.",
-  parameters: z.object({
-    project_name: z.string(),
-    stories: z.array(storySchema),
-  }),
-  execute: async ({ project_name, stories }): Promise<StoryGenerationResult> => {
-    const normalizedStories: UserStory[] = stories.map((story, index) => ({
-      ...story,
-      id: story.id || `US-${String(index + 1).padStart(3, "0")}`,
-      priority: story.priority ?? pickPriority(index, stories.length),
-      acceptanceCriteria: story.acceptanceCriteria,
-    }));
-
-    return {
-      projectName: project_name,
-      total: normalizedStories.length,
-      stories: normalizedStories,
-      summary: {
-        must: normalizedStories.filter((story) => story.priority === "must").length,
-        should: normalizedStories.filter((story) => story.priority === "should").length,
-        could: normalizedStories.filter((story) => story.priority === "could").length,
-      },
-    };
-  },
-});
-
-export const generateDocTool = tool({
-  description: "Return the final requirement specification as markdown.",
-  parameters: docSchema,
-  execute: async ({ projectName, content }): Promise<DocumentGenerationResult> => {
-    return {
-      projectName,
-      format: "markdown",
-      content,
-      charCount: content.length,
-    };
-  },
-});
+export function summarizeRequirement(requirement: StructuredRequirement) {
+  return [
+    `项目：${requirement.projectName}`,
+    `用户：${requirement.targetUsers.join("、") || "未指定"}`,
+    `核心功能：${requirement.coreFeatures.join("；") || "未指定"}`,
+    `约束：${requirement.constraints.join("；") || "未指定"}`,
+  ].join("\n");
+}

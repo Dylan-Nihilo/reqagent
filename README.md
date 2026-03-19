@@ -1,92 +1,85 @@
-# ReqAgent MVP
+# ReqAgent v0
 
-ReqAgent is a pragmatic MVP for structured requirement analysis under `projects/reqagent`.
+ReqAgent 是一个面向需求分析的 Next.js 工作台。当前版本保留 `assistant-ui` 和现有组件壳，但已经改成显式阶段工作流，并固定走 OpenAI Responses API。
 
-It follows the spec's recommended MVP path:
+## 当前架构
 
-- Next.js App Router scaffold
-- assistant-ui for the threaded chat surface
-- Vercel AI SDK for streaming tool calls and responses
-- Tool-driven phases for parsing, requirement decomposition, and document generation
-- `@openai/agents` definitions included as forward-compatible placeholders
-- Explicit note that true multi-agent handoff is deferred
-- Mobile-accessible responsive layout for chat and artifact review on narrow screens
+- 前端：`assistant-ui` + `@assistant-ui/react-ai-sdk`
+- runtime：`useChatRuntime()` + AI SDK 原生 `UIMessage` stream
+- 模型适配：`@ai-sdk/openai` + `responses(model)`
+- 后端编排：显式 `clarify -> parse -> decompose -> document` workflow
+- 业务状态：以 assistant message `metadata` 作为线程唯一真相源
+- 产出物：线程级最新成功 `brief / stories / doc` 快照
+- 失败处理：provider / schema / JSON 错误显式写回 runtime metadata
 
-## What is implemented
+当前阶段链路：
 
-- `app/page.tsx`: assistant-ui runtime bootstrapping
-- `app/api/chat/route.ts`: single-route streaming chat endpoint
-- `components/`: chat shell, artifact panel, pipeline bar, and tool UIs
-- `lib/tools.ts`: structured tools used by the model
-- `lib/agents.ts`: agent configs plus the merged MVP system prompt
-- `lib/types.ts`: shared types for artifacts and pipeline events
-- `lib/useReqAgentRuntime.ts`: local assistant-ui runtime bridge for the AI SDK data stream
-- `workspace/uploads` and `workspace/outputs`: local directories reserved for future persistence
+1. `Orchestrator` 判断信息是否充分，并在必要时追问
+2. `InputParser` 生成结构化 `brief`
+3. `ReqDecomposer` 检索知识模式并生成 `stories`
+4. `DocGenerator` 生成 Markdown 需求文档
 
-## MVP tradeoffs
+前端会同步展示：
 
-This version deliberately does not implement true multi-agent handoff. The spec recommends `streamText + tools` for MVP validation, so the runtime uses one streamed model call and a strong phase-aware system prompt. The `@openai/agents` agent definitions are present to document the intended migration path.
+- 对话流式输出
+- Tool UI 调用状态
+- 当前阶段 / 当前角色 / thinking
+- Stories / 需求文档产出物
 
-The scaffold also uses a local runtime bridge in `lib/useReqAgentRuntime.ts` because the published `@assistant-ui/react-ai-sdk` package currently trips an export-path issue during Next.js builds. The app still uses assistant-ui plus the Vercel AI SDK data stream contract; the wrapper simply keeps the build runnable.
+## 代码结构
 
-The UI also supports mobile web usage for the MVP: on narrow screens the main shell switches to a phone-friendly segmented view so the conversation/composer and artifact panel stay readable without relying on side-by-side desktop space.
+- `app/page.tsx`：`useChatRuntime()` 入口
+- `app/api/chat/route.ts`：原生 `UIMessage` stream 输出，显式阶段调度与 metadata 写回
+- `lib/provider-config.ts`：ReqAgent 独立 provider 配置解析与安全摘要日志
+- `lib/workflow.ts`：阶段决策、Responses API 调用、错误分类与最终总结
+- `lib/tools.ts`：业务 schema、本地知识模式和结果装配
+- `lib/types.ts`：共享类型、thread state schema、metadata 解析
+- `components/`：共享 workbench、消息、thinking、composer、artifact、tool UIs
 
-## Run locally
+## 环境变量
 
-ReqAgent reads its server-side OpenAI-compatible config from host environment variables.
+ReqAgent 优先读取以下服务端环境变量：
 
-Preferred variables:
+- `REQAGENT_PROVIDER_NAME`
+- `REQAGENT_API_KEY`
+- `REQAGENT_BASE_URL`
+- `REQAGENT_MODEL`
 
-- `OPENAI_API_KEY`: required for authenticated providers
-- `OPENAI_BASE_URL`: optional; set this when targeting an OpenAI-compatible endpoint instead of the default OpenAI API
-- `OPENAI_MODEL`: optional; defaults to `gpt-4o-mini`
+同时兼容旧的 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`，但只作为迁移映射层使用。
 
-You can export these in your shell, provide them via your process manager, or copy `.env.example` to `.env.local` for local-only convenience. `.env.local` is optional, not required.
+说明：
 
-1. Set `OPENAI_API_KEY` in your host environment, or create `.env.local` from `.env.example`
-2. Install dependencies:
+- ReqAgent 不会在运行时读取 `~/.codex`。
+- 可以参考 Codex 当前可用的 provider 参数手动填写到 `.env.local`。
+- 运行时主链路固定使用 Responses API；`chat/completions` 只用于外部诊断，不作为应用主路径。
+
+`.env.local` 可直接基于 `.env.example` 创建。
+
+## 本地运行
 
 ```bash
 pnpm install
-```
-
-3. Start the app:
-
-```bash
 pnpm dev
 ```
 
-4. Open `http://localhost:3000`
+打开 [http://localhost:3000](http://localhost:3000)。
 
-## Verify
+## 校验
 
 ```bash
 pnpm typecheck
 pnpm build
 ```
 
-## Mobile responsiveness
-
-- The MVP supports mobile web usage and adapts the main layout for narrow screens.
-- On phones, the primary shell uses a conversation/artifacts toggle instead of the desktop split pane.
-- The composer stacks vertically on small screens so prompt entry and send actions remain reachable.
-- Artifact content stays available through the existing internal tabs (`Stories`, `SRS`, `Notes`).
-
-Known limitations:
-
-- Long generated markdown or dense story sets can still produce substantial vertical scrolling on smaller devices.
-- This is responsive web support only; there is no native mobile packaging or install-specific optimization yet.
-
-## Suggested prompt
+## 示例输入
 
 ```text
 我想做一个在线教育平台，支持视频课程、直播教学、作业提交和批改。目标用户是 K12 学生和家长。
 ```
 
-Expected flow:
+## 当前限制
 
-1. ReqAgent may ask one or two clarifying questions
-2. `parse_input` logs the parsed brief
-3. `search_knowledge` returns a seeded reference pattern
-4. `generate_stories` emits structured user stories
-5. `generate_doc` returns the markdown requirement draft
+- v0 不接 MCP Server
+- 不处理文件上传和附件解析
+- Mermaid 在文档面板中按 Markdown 代码块展示，不做图形渲染
+- 线程续接仍依赖 UI message history + metadata，不接数据库

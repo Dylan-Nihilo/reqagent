@@ -1,48 +1,58 @@
 "use client";
 
-import type { PipelineState, ReqAgentPhase } from "@/lib/types";
+import styles from "@/components/ReqAgentWorkbench.module.css";
+import { reqAgentStageLabels, reqAgentStageOrder, type ReqAgentPipeline, type ReqAgentRole, type ReqAgentStage } from "@/lib/types";
 
 type PipelineBarProps = {
-  pipeline: PipelineState;
+  currentAgent?: ReqAgentRole;
+  pipeline: ReqAgentPipeline;
 };
 
-const steps: Array<{ tool: ReqAgentPhase; label: string }> = [
-  { tool: "parse_input", label: "解析输入" },
-  { tool: "search_knowledge", label: "知识检索" },
-  { tool: "generate_stories", label: "生成故事" },
-  { tool: "generate_doc", label: "生成文档" },
-];
+const steps: Array<{ stage: ReqAgentStage; label: string }> = reqAgentStageOrder.map((stage) => ({
+  stage,
+  label: reqAgentStageLabels[stage],
+}));
 
-export function PipelineBar({ pipeline }: PipelineBarProps) {
-  const statusLabel = {
-    idle: "未开始",
-    running: "进行中",
-    complete: "完成",
-    incomplete: "中断",
-  } as const;
+const statusLabel = {
+  idle: "未开始",
+  running: "进行中",
+  complete: "完成",
+  failed: "失败",
+  awaiting_input: "待补充",
+} as const;
 
+const statusClassName = {
+  idle: styles.statusIdle,
+  running: styles.statusRunning,
+  complete: styles.statusComplete,
+  failed: styles.statusIncomplete,
+  awaiting_input: styles.statusIdle,
+} as const;
+
+export function PipelineBar({ currentAgent, pipeline }: PipelineBarProps) {
   return (
-    <footer className="flex flex-wrap items-center gap-3 border-t border-white/10 bg-[rgba(12,17,24,0.94)] px-5 py-4 md:px-6">
-      <span className="text-xs uppercase tracking-[0.24em] text-[var(--muted)]">执行链路</span>
-      <div className="flex flex-1 flex-wrap items-center gap-2">
-        {steps.map((step) => {
-          const status = pipeline[step.tool];
-          return (
-            <div
-              key={step.tool}
-              className={[
-                "rounded-full border px-3 py-2 text-xs uppercase tracking-[0.16em] transition",
-                status === "running"
-                  ? "border-amber-300/30 bg-amber-300/12 text-amber-100"
-                  : status === "complete"
-                    ? "border-sky-300/30 bg-sky-300/12 text-sky-100"
-                    : "border-white/10 bg-white/4 text-[var(--muted)]",
-              ].join(" ")}
-            >
-              {step.label} / {statusLabel[status]}
+    <footer className={styles.footerBar}>
+      <div className={styles.footerHead}>
+        <div>
+          <p className={styles.panelEyebrow}>Execution Chain</p>
+          <h2 className={styles.panelTitle}>阶段状态</h2>
+        </div>
+        <div className={styles.agentChip}>
+          <span className={styles.agentChipDot} />
+          当前 Agent · {currentAgent ?? "Orchestrator"}
+        </div>
+      </div>
+
+      <div className={styles.phaseGrid}>
+        {steps.map((step) => (
+          <section key={step.stage} className={styles.phaseCard}>
+            <p className={styles.phaseTitle}>{step.label}</p>
+            <div className={styles.phaseStatusRow}>
+              <span className={`${styles.phaseDot} ${statusClassName[pipeline[step.stage]]}`} />
+              <span className={styles.phaseStatusText}>{statusLabel[pipeline[step.stage]]}</span>
             </div>
-          );
-        })}
+          </section>
+        ))}
       </div>
     </footer>
   );
