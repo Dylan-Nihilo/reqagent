@@ -1,6 +1,6 @@
+import { streamObject, streamText } from "ai";
 import { z } from "zod";
-import { getReqAgentProviderInfo } from "@/lib/provider-config";
-import { generateResponsesObject, generateResponsesText } from "@/lib/responses-client";
+import { reqAgentModel, getProviderInfo } from "@/lib/ai-provider";
 import {
   createReqAgentPipeline,
   createReqAgentThreadState,
@@ -14,7 +14,6 @@ import {
 } from "@/lib/types";
 import {
   buildStoryGenerationResult,
-  clarifyDecisionSchema,
   detectDomain,
   detectProjectName,
   generateStoriesSchema,
@@ -31,6 +30,13 @@ export type WorkflowFailure = {
   message: string;
 };
 
+// ---------------------------------------------------------------------------
+// Structured output helper — uses streamObject (not generateObject) because
+// this provider only returns data when stream: true.
+// Uses mode: "json" (response_format: json_object) since many compatible
+// providers reject the stricter json_schema response format.
+// ---------------------------------------------------------------------------
+
 async function generateStructuredOutput<T>({
   schema,
   schemaName,
@@ -41,14 +47,53 @@ async function generateStructuredOutput<T>({
   schemaName: string;
   system: string;
   prompt: string;
-}) {
-  return await generateResponsesObject({
+}): Promise<T> {
+  const result = streamObject({
+    model: reqAgentModel,
     schema,
     schemaName,
+    mode: "json",
     system,
     prompt,
   });
+
+  // AI SDK v6: the stream must be consumed before result.object resolves.
+  for await (const _partial of result.partialObjectStream) {
+    // drain — partial objects are discarded; we only need the final one.
+  }
+
+  return await result.object;
 }
+
+// ---------------------------------------------------------------------------
+// Plain text helper — uses streamText for the same reason.
+// ---------------------------------------------------------------------------
+
+async function generatePlainText({
+  system,
+  prompt,
+}: {
+  system: string;
+  prompt: string;
+}): Promise<string> {
+  const result = streamText({
+    model: reqAgentModel,
+    system,
+    prompt,
+  });
+
+  // AI SDK v6: consume the stream so result.text resolves.
+  let text = "";
+  for await (const chunk of result.textStream) {
+    text += chunk;
+  }
+
+  return text;
+}
+
+// ---------------------------------------------------------------------------
+// Error classification
+// ---------------------------------------------------------------------------
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -103,6 +148,10 @@ export function classifyWorkflowError(error: unknown): WorkflowFailure {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Run state factory
+// ---------------------------------------------------------------------------
+
 export function createRunState(previousState: ReqAgentThreadState | null, runId: string, latestUserText: string): ReqAgentThreadState {
   return createReqAgentThreadState({
     runId,
@@ -110,9 +159,13 @@ export function createRunState(previousState: ReqAgentThreadState | null, runId:
     threadTitle: previousState?.threadTitle || detectProjectName(latestUserText),
     pipeline: createReqAgentPipeline(),
     artifacts: previousState?.artifacts ?? {},
-    providerInfo: getReqAgentProviderInfo(),
+    providerInfo: getProviderInfo(),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Stage detection & planning
+// ---------------------------------------------------------------------------
 
 export function detectRequestedStage(text: string): ReqAgentStage | null {
   const source = text.toLowerCase();
@@ -185,43 +238,9 @@ export function buildStageSequence(
   }
 }
 
-export async function evaluateClarification(options: {
-  latestUserText: string;
-  conversationText: string;
-  previousState: ReqAgentThreadState | null;
-}) {
-  const { latestUserText, conversationText, previousState } = options;
-
-  return await generateStructuredOutput({
-    schema: clarifyDecisionSchema,
-    schemaName: "clarify_decision",
-    system: `你是 ReqAgent 的 Orchestrator。
-
-任务：
-- 判断当前信息是否足够进入需求分析流程。
-- 如果不足，只提出最多 2 个真正影响方案的问题。
-- 如果已有历史 brief、stories 或文档，用户的新补充默认是对现有线程的 refinement，不要轻易退回到大范围追问。
-
-判断标准：
-- 至少要知道产品目标、主要用户或角色、核心功能方向。
-- 如果关键约束、权限边界、成功标准明显缺失，并且会影响需求拆解结果，再追问。
-
-输出要求：
-- 使用中文。
-- \`threadTitle\` 给出一个简短稳定的会话标题。
-- \`publicThinking\` 只能写可展示给用户的公开进度文案，不能暴露推理细节。`,
-    prompt: [
-      "最近一条用户输入：",
-      latestUserText,
-      "",
-      "当前线程用户上下文：",
-      conversationText || "无",
-      "",
-      "上一轮线程状态：",
-      previousState ? JSON.stringify(previousState.artifacts, null, 2) : "无历史产物",
-    ].join("\n"),
-  });
-}
+// ---------------------------------------------------------------------------
+// Business-logic stage functions
+// ---------------------------------------------------------------------------
 
 export async function parseRequirement(options: {
   latestUserText: string;
@@ -308,7 +327,7 @@ export async function generateDocument(options: {
 }) {
   const { latestUserText, requirement, stories, previousState } = options;
 
-  const result = await generateResponsesText({
+  const result = await generatePlainText({
     system: `你是 DocGenerator。
 
 任务：
@@ -333,6 +352,10 @@ export async function generateDocument(options: {
 
   return withDocumentMetrics(requirement.projectName, result);
 }
+
+// ---------------------------------------------------------------------------
+// Conversation & result helpers
+// ---------------------------------------------------------------------------
 
 export function buildConversationText(messages: Array<{ role?: string; parts?: Array<{ type?: string; text?: string }> }>) {
   return messages

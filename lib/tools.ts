@@ -15,13 +15,6 @@ export const reqAgentToolNames = {
   generateDoc: "generate_doc",
 } as const;
 
-export const clarifyDecisionSchema = z.object({
-  needsClarification: z.boolean(),
-  questions: z.array(z.string()).max(2),
-  threadTitle: z.string().min(1).max(48),
-  publicThinking: z.string().min(1).max(120),
-});
-
 export const parseResultSchema = z.object({
   projectName: z.string(),
   rawSummary: z.string(),
