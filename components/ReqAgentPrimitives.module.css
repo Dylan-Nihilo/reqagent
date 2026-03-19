@@ -302,6 +302,17 @@
 .statusRunning {
   background: var(--reqagent-text);
   box-shadow: 0 0 0 5px rgba(17, 17, 17, 0.06);
+  animation: dotPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes dotPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 5px rgba(17, 17, 17, 0.06);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(17, 17, 17, 0.1);
+  }
 }
 
 .statusComplete {
@@ -312,6 +323,17 @@
 .statusIncomplete {
   background: var(--reqagent-err);
   box-shadow: 0 0 0 5px var(--reqagent-err-soft);
+}
+
+.statusPending {
+  background: var(--reqagent-muted);
+  box-shadow: 0 0 0 5px rgba(17, 17, 17, 0.04);
+}
+
+.statusSearching {
+  background: var(--reqagent-text);
+  box-shadow: 0 0 0 5px rgba(17, 17, 17, 0.06);
+  animation: dotPulse 1.4s ease-in-out infinite;
 }
 
 .toolMeta {
@@ -680,6 +702,53 @@
   font-size: 11px;
   color: var(--reqagent-text-soft);
   box-shadow: 0 8px 20px rgba(17, 17, 17, 0.04);
+}
+
+.streamingIndicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.streamingDots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.streamingDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--reqagent-muted);
+  animation: dotBounce 1.2s ease-in-out infinite;
+}
+
+.streamingDot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.streamingDot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes dotBounce {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+.streamingLabel {
+  font-size: 12px;
+  color: var(--reqagent-muted);
+  letter-spacing: 0.02em;
 }
 
 @media (max-width: 820px) {

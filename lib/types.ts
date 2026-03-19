@@ -1,6 +1,6 @@
 import type { UIMessage } from "ai";
 import { z } from "zod";
-import type { ReqAgentProviderInfo } from "@/lib/provider-config";
+import type { ReqAgentProviderInfo } from "@/lib/ai-provider";
 
 export type StoryPriority = "must" | "should" | "could";
 
@@ -143,7 +143,7 @@ export const reqAgentArtifactsSchema = z.object({
 export const reqAgentProviderInfoSchema = z.object({
   providerName: z.string(),
   model: z.string(),
-  wireApi: z.literal("responses"),
+  wireApi: z.enum(["chat-completions", "responses"]),
 });
 
 export const reqAgentThreadStateSchema = z.object({
@@ -222,5 +222,88 @@ export function normalizeToolStatus(status: { type: string }): ReqAgentToolStatu
       return "incomplete";
     default:
       return "complete";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Agent activity & execution state types
+// ---------------------------------------------------------------------------
+
+/** High-level agent activity — what the agent is doing right now. */
+export type AgentActivity =
+  | "idle"
+  | "thinking"
+  | "responding"
+  | "tool_calling"
+  | "reading"
+  | "searching"
+  | "handoff"
+  | "error";
+
+/** Granular tool execution lifecycle. */
+export type ToolExecutionState =
+  | "pending"
+  | "running"
+  | "streaming"
+  | "success"
+  | "error";
+
+/** MCP connection lifecycle (reserved for future use). */
+export type McpConnectionState =
+  | "idle"
+  | "connecting"
+  | "calling"
+  | "streaming"
+  | "complete"
+  | "error";
+
+/**
+ * Server-sent metadata envelope — attached to each assistant message via
+ * `toUIMessageStreamResponse({ messageMetadata })`.
+ */
+export type ReqAgentMessageMeta = {
+  agentActivity: AgentActivity;
+  activeRole: ReqAgentRole | null;
+  phaseLabel: string;
+  publicThinking: string;
+};
+
+// ---------------------------------------------------------------------------
+// State conversion helpers
+// ---------------------------------------------------------------------------
+
+/** Map assistant-ui part status → ToolExecutionState. */
+export function normalizeToolExecutionState(status: { type: string }): ToolExecutionState {
+  switch (status.type) {
+    case "requires-action":
+    case "approval-requested":
+    case "approval-responded":
+      return "pending";
+    case "running":
+    case "input-streaming":
+    case "input-available":
+      return "running";
+    case "complete":
+      return "success";
+    case "output-error":
+    case "output-denied":
+    case "incomplete":
+      return "error";
+    default:
+      return "running";
+  }
+}
+
+/** Convert ToolExecutionState → legacy ReqAgentToolStatus for existing UI. */
+export function toolExecutionToToolStatus(state: ToolExecutionState): ReqAgentToolStatus {
+  switch (state) {
+    case "pending":
+    case "running":
+    case "streaming":
+      return "running";
+    case "success":
+      return "complete";
+    case "error":
+      return "incomplete";
   }
 }
