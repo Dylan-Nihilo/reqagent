@@ -1,6 +1,7 @@
 "use client";
 
-import { ComposerPrimitive, useThread } from "@assistant-ui/react";
+import { ComposerPrimitive, useThread, useThreadRuntime } from "@assistant-ui/react";
+import { markMessageCancelled } from "@/lib/cancel-store";
 import styles from "@/components/ReqAgentPrimitives.module.css";
 
 type ReqComposerProps = {
@@ -71,7 +72,6 @@ function ReqComposerRuntime({
   hint,
   className,
 }: Required<Pick<ReqComposerProps, "variant" | "placeholder" | "hint">> & Pick<ReqComposerProps, "className">) {
-  const isRunning = useThread((state) => state.isRunning);
   const frameClassName = `${styles.composerFrame} ${variant === "landing" ? styles.composerLanding : styles.composerThread}`;
 
   return (
@@ -85,15 +85,42 @@ function ReqComposerRuntime({
         />
 
         <div className={styles.composerActions}>
-          {isRunning ? (
-            <ComposerPrimitive.Cancel className={styles.composerActionSecondary}>停止</ComposerPrimitive.Cancel>
-          ) : (
-            <ComposerPrimitive.Send className={styles.composerActionPrimary}>发送</ComposerPrimitive.Send>
-          )}
+          <ComposerSendButton />
         </div>
       </div>
 
       {hint ? <div className={styles.composerHint}><span>{hint}</span></div> : null}
     </ComposerPrimitive.Root>
+  );
+}
+
+function ComposerSendButton() {
+  const isRunning = useThread((s) => s.isRunning);
+  const threadRuntime = useThreadRuntime();
+  const lastAssistantId = useThread((s) => {
+    const msgs = s.messages;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === "assistant") return msgs[i].id;
+    }
+    return undefined;
+  });
+
+  if (isRunning) {
+    return (
+      <button
+        className={styles.composerActionSecondary}
+        onClick={() => {
+          if (lastAssistantId) markMessageCancelled(lastAssistantId);
+          threadRuntime.cancelRun();
+        }}
+        type="button"
+      >
+        停止
+      </button>
+    );
+  }
+
+  return (
+    <ComposerPrimitive.Send className={styles.composerActionPrimary}>发送</ComposerPrimitive.Send>
   );
 }
