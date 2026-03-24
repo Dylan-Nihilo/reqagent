@@ -46,11 +46,12 @@ REQAGENT_WIRE_API=      # chat-completions | responses
 | `lib/ai-provider.ts` | Provider config, wireApi switch, `getProviderInfo()` |
 | `app/api/chat/route.ts` | Route handler: real streamText + tools, simulated tool stream |
 | `app/page.tsx` | `useChatRuntime` + `AssistantChatTransport` |
-| `components/ReqAgentUI.tsx` | Main shell: Empty/Text/Reasoning/ToolFallback renderers |
-| `components/ReqTextPart.tsx` | Markdown text renderer |
-| `components/ReqReasoningPart.tsx` | Reasoning → ReqThinkingBlock bridge |
+| `components/ReqAgentUI.tsx` | Main shell: Empty/Thread layout, message components |
+| `lib/part-registry.tsx` | Centralized part→component map (Text/File/Image/Source inlined, Reasoning/Tool delegated) |
+| `components/ReqReasoningPart.tsx` | Reasoning → ReqThinkingBlock bridge (has internal state) |
 | `components/ReqToolCallPart.tsx` | Tool call → ReqToolCard fallback bridge |
 | `components/ReqStreamingIndicator.tsx` | Loading dots while waiting for first token |
+| `components/message-ui/ReqMessageUI.tsx` | Display components: MarkdownPreview, FileTile, ImageTile, SourceList, PendingLine |
 | `lib/types.ts` | Domain types + AgentActivity + ToolExecutionState |
 | `lib/use-agent-activity.ts` | `useAgentActivity()` hook (server metadata > parts inference) |
 | `lib/tools.ts` | Business tool schemas and helpers |
