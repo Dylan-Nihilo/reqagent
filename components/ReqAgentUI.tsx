@@ -10,17 +10,12 @@ import {
   type MessageStatus,
 } from "@assistant-ui/react";
 import { ReqComposer } from "@/components/ReqComposer";
-import { ReqFilePart } from "@/components/ReqFilePart";
-import { ReqImagePart } from "@/components/ReqImagePart";
 import { ReqMessage } from "@/components/ReqMessage";
-import { ReqReasoningPart } from "@/components/ReqReasoningPart";
-import { ReqSourcePart } from "@/components/ReqSourcePart";
 import { ReqStreamingIndicator } from "@/components/ReqStreamingIndicator";
-import { ReqTextPart } from "@/components/ReqTextPart";
 import { ReqScrollToBottom } from "@/components/ReqScrollToBottom";
 import { useEffect, useState } from "react";
-import { ReqToolCallPart } from "@/components/ReqToolCallPart";
 import { ReqNavDrawer } from "@/components/ReqNavDrawer";
+import { userPartComponents, assistantPartComponents } from "@/lib/part-registry";
 import { ReqArtifactsPanel } from "@/components/ReqArtifactsPanel";
 import styles from "@/components/ReqAgentShell.module.css";
 import {
@@ -252,13 +247,7 @@ function UserMessage() {
   return (
     <MessagePrimitive.Root>
       <ReqMessage role="user" status="complete">
-        <MessagePrimitive.Parts
-          components={{
-            Text: ReqTextPart,
-            File: ReqFilePart,
-            Image: ReqImagePart,
-          }}
-        />
+        <MessagePrimitive.Parts components={userPartComponents} />
       </ReqMessage>
     </MessagePrimitive.Root>
   );
@@ -292,18 +281,7 @@ function AssistantMessage() {
             phases={pendingCopy.phases}
           />
         ) : null}
-        <MessagePrimitive.Parts
-          components={{
-            Text: ReqTextPart,
-            Reasoning: ReqReasoningPart,
-            Source: ReqSourcePart,
-            File: ReqFilePart,
-            Image: ReqImagePart,
-            tools: {
-              Fallback: ReqToolCallPart,
-            },
-          }}
-        />
+        <MessagePrimitive.Parts components={assistantPartComponents} />
       </ReqMessage>
     </MessagePrimitive.Root>
   );
