@@ -1,0 +1,343 @@
+.routeChrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 0 8px;
+}
+
+.routeLinks {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.routeLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border: 1px solid var(--reqagent-line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--reqagent-text-soft);
+  text-decoration: none;
+  font-size: 12px;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.routeLink:hover {
+  transform: translateY(-1px);
+  border-color: var(--reqagent-line-strong);
+  background: var(--reqagent-panel);
+}
+
+.landingSection {
+  padding: 20px 0 22px;
+}
+
+.emptyStateStack {
+  display: grid;
+  gap: 14px;
+}
+
+.promptRail {
+  display: grid;
+  gap: 10px;
+  text-align: left;
+}
+
+.promptChip {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: start;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--reqagent-line);
+  border-radius: 18px;
+  background: var(--reqagent-panel);
+  color: var(--reqagent-text);
+  cursor: default;
+}
+
+.promptChipIndex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 34px;
+  border: 1px solid var(--reqagent-line);
+  border-radius: 999px;
+  background: var(--reqagent-panel-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--reqagent-muted);
+}
+
+.promptChipText {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--reqagent-text-soft);
+}
+
+.sidebar {
+  display: grid;
+  gap: 14px;
+}
+
+.sidebarSection {
+  display: grid;
+  gap: 6px;
+}
+
+.sidebarKicker {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--reqagent-muted);
+}
+
+.sidebarTitle {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.sidebarBody {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--reqagent-text-soft);
+}
+
+.sidebarList {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--reqagent-text-soft);
+}
+
+.previewChat {
+  gap: 16px;
+}
+
+.threadLabelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.threadMeta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--reqagent-muted);
+}
+
+.processStack {
+  display: grid;
+  gap: 10px;
+  padding-left: 40px;
+}
+
+.processCard {
+  width: min(100%, 66ch);
+}
+
+.processChip {
+  align-self: start;
+}
+
+.reasoningLabel {
+  color: var(--reqagent-text-soft);
+}
+
+.reasoningChipRunning {
+  color: var(--reqagent-text);
+}
+
+.reasoningChipSuccess {
+  color: var(--reqagent-ok);
+}
+
+.reasoningChipError {
+  color: var(--reqagent-err);
+}
+
+.toolCard {
+  width: min(100%, 66ch);
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.toolCard:hover {
+  transform: translateY(-1px);
+}
+
+.toolCardPending {
+  border-color: rgba(113, 113, 122, 0.2);
+}
+
+.toolCardRunning {
+  border-color: rgba(17, 17, 17, 0.12);
+}
+
+.toolCardStreaming {
+  border-color: rgba(17, 17, 17, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(17, 17, 17, 0.02);
+}
+
+.toolCardSuccess {
+  background: var(--reqagent-panel-soft);
+}
+
+.toolCardError {
+  border-color: rgba(82, 82, 91, 0.18);
+  background: rgba(82, 82, 91, 0.04);
+}
+
+.toolButton {
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.compactMark {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--reqagent-muted-soft);
+}
+
+.statusPending {
+  background: var(--reqagent-muted);
+  box-shadow: 0 0 0 5px rgba(113, 113, 122, 0.08);
+}
+
+.statusStreaming {
+  background: var(--reqagent-text-soft);
+  box-shadow: 0 0 0 5px rgba(63, 63, 70, 0.08);
+}
+
+.toolStatusPending {
+  background: rgba(113, 113, 122, 0.08);
+  color: var(--reqagent-muted);
+}
+
+.toolStatusStreaming {
+  background: rgba(63, 63, 70, 0.08);
+  color: var(--reqagent-text-soft);
+}
+
+.toolChevron {
+  align-self: center;
+  padding-right: 14px;
+  color: var(--reqagent-muted-soft);
+  transition: transform 150ms ease;
+}
+
+.toolChevronOpen {
+  transform: rotate(180deg);
+}
+
+.toolExpandable {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 180ms ease;
+}
+
+.toolExpandableOpen {
+  grid-template-rows: 1fr;
+}
+
+.toolExpandableInner {
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 14px 14px 38px;
+}
+
+.toolDetail {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--reqagent-text-soft);
+}
+
+.composerFoot {
+  padding-top: 8px;
+}
+
+.finalSummary {
+  display: grid;
+  gap: 10px;
+}
+
+.finalLead {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.finalList {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+
+@media (max-width: 1120px) {
+  .processStack {
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .routeChrome {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .routeLinks {
+    width: 100%;
+  }
+
+  .processStack {
+    gap: 8px;
+  }
+
+  .toolExpandableInner {
+    padding-left: 14px;
+  }
+
+  .threadLabelRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .routeLink,
+  .toolCard,
+  .toolChevron,
+  .toolExpandable {
+    transition: none;
+  }
+}
