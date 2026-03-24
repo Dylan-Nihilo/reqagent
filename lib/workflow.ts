@@ -58,7 +58,8 @@ async function generateStructuredOutput<T>({
   });
 
   // AI SDK v6: the stream must be consumed before result.object resolves.
-  for await (const _partial of result.partialObjectStream) {
+  for await (const partial of result.partialObjectStream) {
+    void partial;
     // drain — partial objects are discarded; we only need the final one.
   }
 
