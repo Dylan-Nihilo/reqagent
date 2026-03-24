@@ -1,4 +1,4 @@
-export type ToolCategory = "structured" | "workspace" | "execution" | "interaction";
+export type ToolCategory = "structured" | "workspace" | "execution" | "interaction" | "mcp";
 export type ToolRiskLevel = "safe" | "caution" | "sensitive";
 export type ToolRendererKind = "structured" | "terminal" | "catalog";
 
@@ -41,6 +41,7 @@ export const toolCategoryLabels: Record<ToolCategory, string> = {
   workspace: "工作区工具",
   execution: "执行工具",
   interaction: "交互 / 审批",
+  mcp: "MCP 外部工具",
 };
 
 export const toolRiskLabels: Record<ToolRiskLevel, string> = {
@@ -135,8 +136,9 @@ export function getToolRegistryItem(toolName: string): ToolRegistryItem | undefi
   return toolRegistryByName.get(toolName);
 }
 
-export function getAvailableToolsResult(): AvailableToolsResult {
-  const groups = [...toolRegistry]
+export function getAvailableToolsResult(extraItems: ToolRegistryItem[] = []): AvailableToolsResult {
+  const allItems = [...toolRegistry, ...extraItems];
+  const groups = allItems
     .sort((left, right) => left.preferredOrder - right.preferredOrder)
     .reduce<Record<ToolCategory, AvailableToolDescriptor[]>>(
       (accumulator, tool) => {
@@ -156,11 +158,12 @@ export function getAvailableToolsResult(): AvailableToolsResult {
         workspace: [],
         execution: [],
         interaction: [],
+        mcp: [],
       },
     );
 
   return {
-    total: toolRegistry.length,
+    total: allItems.length,
     groups: (Object.keys(toolCategoryLabels) as ToolCategory[]).map((key) => ({
       key,
       title: toolCategoryLabels[key],

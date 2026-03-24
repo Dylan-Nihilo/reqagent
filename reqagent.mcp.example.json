@@ -1,0 +1,45 @@
+{
+  "servers": [
+    {
+      "id": "filesystem",
+      "label": "Project Workspace FS",
+      "description": "Bind the official filesystem MCP server to the active ReqAgent project workspace.",
+      "executionMode": "proxy",
+      "toolPrefix": "mcp.fs",
+      "transport": {
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "${REQAGENT_WORKSPACE_DIR}"
+        ]
+      }
+    },
+    {
+      "id": "playwright",
+      "label": "Playwright Browser",
+      "description": "Drive a real browser for rendered pages and workflow validation.",
+      "executionMode": "proxy",
+      "transport": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "@playwright/mcp@latest"]
+      }
+    },
+    {
+      "id": "docs",
+      "label": "Remote Docs",
+      "description": "Example remote MCP server over HTTP. Environment placeholders are expanded at runtime.",
+      "executionMode": "auto",
+      "includeTools": ["search_docs", "read_doc"],
+      "transport": {
+        "type": "http",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "Authorization": "Bearer ${DOCS_MCP_TOKEN}"
+        }
+      }
+    }
+  ]
+}

@@ -11,8 +11,42 @@ import { ReqRuntimeErrorBoundary } from "@/components/ReqRuntimeErrorBoundary";
 import { ReqToolApprovalProvider } from "@/components/tool-ui/ReqToolApprovalContext";
 import { reqAgentToolkit } from "@/lib/toolkit";
 
+const WORKSPACE_STORAGE_KEY = "reqagent.activeWorkspaceId";
+
+function getOrCreateWorkspaceId() {
+  if (typeof window === "undefined") return "ws_browser_pending";
+
+  const existing = window.localStorage.getItem(WORKSPACE_STORAGE_KEY)?.trim();
+  if (existing) return existing;
+
+  const workspaceId = `ws_${crypto.randomUUID()}`;
+  window.localStorage.setItem(WORKSPACE_STORAGE_KEY, workspaceId);
+  return workspaceId;
+}
+
 export default function Home() {
-  const transport = useMemo(() => new AssistantChatTransport({ api: "/api/chat" }), []);
+  const transport = useMemo(
+    () =>
+      new AssistantChatTransport({
+        api: "/api/chat",
+        prepareSendMessagesRequest: async (options) => {
+          const workspaceId = getOrCreateWorkspaceId();
+          return {
+            ...options,
+            body: {
+              ...options.body,
+              id: options.id,
+              messages: options.messages,
+              trigger: options.trigger,
+              messageId: options.messageId,
+              metadata: options.requestMetadata,
+              workspaceId,
+            },
+          };
+        },
+      }),
+    [],
+  );
   const tools = useMemo(() => Tools({ toolkit: reqAgentToolkit }), []);
   const auiClients = useMemo(() => ({ tools }), [tools]);
   const chat = useChat({

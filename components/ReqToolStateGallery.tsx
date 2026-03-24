@@ -69,6 +69,7 @@ const categoryToneClasses: Record<ToolCategory, string> = {
   workspace: styles.sectionWorkspace,
   execution: styles.sectionExecution,
   interaction: styles.sectionInteraction,
+  mcp: styles.sectionWorkspace,
 };
 
 const stateToneClasses: Record<ToolInvocationStateTone, string> = {

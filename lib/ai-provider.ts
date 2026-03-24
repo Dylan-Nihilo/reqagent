@@ -24,18 +24,29 @@ const baseURL = normalizeBaseURL(readEnv("REQAGENT_BASE_URL") ?? readEnv("OPENAI
 const modelId = readEnv("REQAGENT_MODEL") ?? readEnv("OPENAI_MODEL") ?? "gpt-4o-mini";
 const wireApi = (readEnv("REQAGENT_WIRE_API") ?? "chat-completions") as WireApi;
 
-const provider = createOpenAI({
+export type WireApi = "chat-completions" | "responses";
+
+export const reqAgentProvider = createOpenAI({
   apiKey,
   baseURL,
 });
 
-type WireApi = "chat-completions" | "responses";
+function isOfficialOpenAIBaseURL(candidate?: string) {
+  if (!candidate) return true;
+
+  try {
+    const url = new URL(candidate);
+    return url.host === "api.openai.com" || url.host.endsWith(".openai.com");
+  } catch {
+    return false;
+  }
+}
 
 // .chat()       → /v1/chat/completions (wider proxy compatibility)
 // .responses()  → /v1/responses (needs store support for multi-step)
 export const reqAgentModel = wireApi === "responses"
-  ? provider.responses(modelId)
-  : provider.chat(modelId);
+  ? reqAgentProvider.responses(modelId)
+  : reqAgentProvider.chat(modelId);
 
 export type ReqAgentProviderInfo = {
   providerName: string;
@@ -45,8 +56,16 @@ export type ReqAgentProviderInfo = {
 
 export function getProviderInfo(): ReqAgentProviderInfo {
   return {
-    providerName: baseURL ? "custom-openai" : "openai",
+    providerName: isOfficialOpenAIBaseURL(baseURL) ? "openai" : "custom-openai",
     model: modelId,
     wireApi,
   };
+}
+
+export function getProviderBaseURL() {
+  return baseURL;
+}
+
+export function supportsNativeResponsesMcp() {
+  return wireApi === "responses" && isOfficialOpenAIBaseURL(baseURL);
 }

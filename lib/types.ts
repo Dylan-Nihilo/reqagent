@@ -289,6 +289,8 @@ export type ReqAgentDebugStep = {
 export type ReqAgentDebugMeta = {
   threadId?: string;
   threadKey?: string;
+  workspaceId?: string;
+  workspaceKey?: string;
   workspaceDir?: string;
   lastEvent?: ReqAgentDebugEvent;
   events?: ReqAgentDebugEvent[];
