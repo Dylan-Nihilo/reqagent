@@ -1,28 +1,56 @@
 "use client";
 
 import type { ReactNode } from "react";
-import styles from "@/components/ReqAgentPrimitives.module.css";
+import {
+  ReqMessageFrame,
+  type ReqMessageAction,
+  type ReqMessageRole,
+  type ReqMessageVisualStatus,
+} from "@/components/message-ui/ReqMessageUI";
 
 type ReqMessageProps = {
-  role: "user" | "assistant";
+  role: ReqMessageRole;
   avatarLabel?: string;
   children: ReactNode;
   className?: string;
+  status?: ReqMessageVisualStatus;
+  title?: string;
+  meta?: string;
+  branchLabel?: string;
+  isRetry?: boolean;
+  signals?: string[];
+  actions?: ReqMessageAction[];
 };
 
-export function ReqMessage({ role, avatarLabel, children, className }: ReqMessageProps) {
-  const isUser = role === "user";
-
+export function ReqMessage({
+  role,
+  avatarLabel,
+  children,
+  className,
+  status,
+  title,
+  meta,
+  branchLabel,
+  isRetry,
+  signals,
+  actions,
+}: ReqMessageProps) {
   return (
-    <div className={`${styles.messageRow} ${isUser ? styles.messageRowUser : ""} ${className ?? ""}`.trim()}>
-      <div className={`${styles.avatar} ${isUser ? styles.avatarUser : styles.avatarAssistant}`}>
-        {avatarLabel ?? (isUser ? "U" : "AI")}
-      </div>
-      <div className={`${styles.messageBlock} ${isUser ? styles.messageBlockUser : ""}`}>
-        <div className={`${styles.messageBody} ${isUser ? styles.messageBodyUser : styles.messageBodyAssistant}`}>
-          <div className={`${styles.messageParts} ${isUser ? styles.messagePartsUser : styles.messagePartsAssistant}`}>{children}</div>
-        </div>
-      </div>
-    </div>
+    <ReqMessageFrame
+      actions={actions}
+      branchLabel={branchLabel}
+      className={className}
+      isRetry={isRetry}
+      meta={meta}
+      monogram={avatarLabel}
+      role={role}
+      signals={signals}
+      status={status}
+      title={title}
+    >
+      {children}
+    </ReqMessageFrame>
   );
 }
+
+export type { ReqMessageAction, ReqMessageRole, ReqMessageVisualStatus };

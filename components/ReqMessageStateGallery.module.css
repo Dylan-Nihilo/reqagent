@@ -1,0 +1,485 @@
+.page {
+  min-height: 100vh;
+  background:
+    linear-gradient(rgba(17, 17, 17, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17, 17, 17, 0.03) 1px, transparent 1px),
+    var(--reqagent-bg);
+  background-size: 36px 36px, 36px 36px, auto;
+  color: var(--reqagent-text);
+}
+
+.shell {
+  width: min(1400px, calc(100vw - 40px));
+  margin: 0 auto;
+  padding: 34px 0 72px;
+}
+
+.hero,
+.section {
+  display: grid;
+  gap: 20px;
+}
+
+.hero {
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  align-items: start;
+  margin-bottom: 20px;
+}
+
+.heroMain,
+.heroAside,
+.asideBlock,
+.overviewCard,
+.sectionHeader,
+.register,
+.previewCard,
+.noteCard,
+.editorCard,
+.catalogItem {
+  display: grid;
+  gap: 10px;
+}
+
+.heroAside,
+.overviewCard,
+.directory,
+.section,
+.footer {
+  border: 1px solid var(--reqagent-line);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.eyebrow,
+.asideLabel,
+.cardEyebrow,
+.registerEyebrow,
+.previewEyebrow {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--reqagent-muted);
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(40px, 5vw, 66px);
+  line-height: 0.94;
+  letter-spacing: -0.055em;
+}
+
+.lead,
+.cardSummary,
+.sectionDescription,
+.registerNote,
+.previewNote,
+.catalogText,
+.legendText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--reqagent-text-soft);
+}
+
+.linkRow,
+.cardTags,
+.directoryItem,
+.noteMetricRow,
+.editorHead,
+.editorActions,
+.catalogHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.link,
+.inlineLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--reqagent-line);
+  border-radius: var(--ra-radius-md);
+  background: rgba(17, 17, 17, 0.04);
+  font-size: 12px;
+  transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
+}
+
+.link:hover,
+.directoryItem:hover {
+  border-color: rgba(17, 17, 17, 0.14);
+  transform: translateY(-1px);
+}
+
+.heroAside {
+  padding: 18px;
+}
+
+.checklist {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--reqagent-text-soft);
+}
+
+.legend {
+  display: grid;
+  gap: 8px;
+}
+
+.legendItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.legendTag,
+.cardTag,
+.registerType,
+.catalogBadge,
+.editorLabel,
+.ghostButton,
+.primaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: var(--ra-radius-md);
+  border: 1px solid rgba(17, 17, 17, 0.08);
+  background: rgba(255, 255, 255, 0.86);
+  font-size: 10.5px;
+}
+
+.legendTag {
+  font-family: var(--reqagent-mono);
+  color: var(--reqagent-text);
+}
+
+.overviewGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.overviewCard {
+  padding: 16px 16px 18px;
+}
+
+.cardTitle,
+.registerTitle,
+.previewTitle {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.3;
+  letter-spacing: -0.03em;
+}
+
+.cardTags {
+  gap: 8px;
+}
+
+.cardTag,
+.registerType,
+.catalogBadge,
+.ghostButton {
+  color: var(--reqagent-text-soft);
+}
+
+.directory {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  margin-bottom: 20px;
+}
+
+.directoryItem {
+  align-items: flex-start;
+  color: inherit;
+  text-decoration: none;
+  padding: 12px 14px;
+  border: 1px solid rgba(17, 17, 17, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
+}
+
+.directoryIndex,
+.sectionIndex,
+.registerState,
+.catalogCode,
+.noteMetricLabel {
+  font-family: var(--reqagent-mono);
+}
+
+.directoryIndex,
+.sectionIndex {
+  font-size: 11px;
+  color: var(--reqagent-muted);
+}
+
+.directoryBody {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.directoryTitle,
+.sectionLead {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.directorySummary {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--reqagent-muted);
+}
+
+.section {
+  padding: 22px;
+  margin-bottom: 22px;
+}
+
+.sectionHeader {
+  gap: 8px;
+}
+
+.sectionTitleRow {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sectionTitleGroup {
+  display: grid;
+  gap: 2px;
+}
+
+.sectionLead {
+  margin: 0;
+  color: var(--reqagent-muted);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: -0.045em;
+}
+
+.sectionBody {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 20px;
+  min-width: 0;
+}
+
+.sectionAside {
+  min-width: 0;
+}
+
+.register {
+  height: 100%;
+  padding: 16px;
+  border: 1px solid rgba(17, 17, 17, 0.08);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(248, 247, 244, 0.94), rgba(244, 243, 239, 0.88)),
+    rgba(255, 255, 255, 0.84);
+}
+
+.registerRows,
+.catalog {
+  display: grid;
+  gap: 10px;
+}
+
+.registerRow {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0 12px;
+  border-top: 1px solid rgba(17, 17, 17, 0.08);
+}
+
+.registerRow:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.registerKeyRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.registerState,
+.catalogCode {
+  font-size: 11px;
+  color: var(--reqagent-text);
+}
+
+.registerValues {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--reqagent-text);
+}
+
+.registerFooter {
+  padding-top: 12px;
+  border-top: 1px solid rgba(17, 17, 17, 0.08);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--reqagent-muted);
+}
+
+.inlineLink {
+  text-decoration: underline;
+  text-decoration-color: rgba(17, 17, 17, 0.18);
+}
+
+.previewGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  min-width: 0;
+}
+
+.previewCard {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(17, 17, 17, 0.08);
+  border-radius: 22px;
+  background:
+    linear-gradient(rgba(17, 17, 17, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17, 17, 17, 0.025) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(249, 249, 246, 0.96), rgba(244, 244, 241, 0.92));
+  background-size: 18px 18px, 18px 18px, auto;
+}
+
+.previewHead {
+  display: grid;
+  gap: 6px;
+}
+
+.previewStage {
+  min-width: 0;
+}
+
+.stack {
+  display: grid;
+  gap: 12px;
+}
+
+.noteCard,
+.editorCard,
+.catalogItem {
+  padding: 14px 15px;
+  border: 1px solid rgba(17, 17, 17, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.noteMetricRow {
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.noteMetricLabel {
+  font-size: 11px;
+  color: var(--reqagent-muted);
+}
+
+.noteMetricValue,
+.editorMeta,
+.editorHint {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--reqagent-text-soft);
+}
+
+.editorHead {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.editorField {
+  display: grid;
+  gap: 8px;
+}
+
+.editorTextarea {
+  width: 100%;
+  min-height: 144px;
+  padding: 14px 16px;
+  border: 1px solid rgba(17, 17, 17, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--reqagent-text);
+  resize: none;
+  font: inherit;
+  line-height: 1.75;
+}
+
+.primaryButton {
+  color: rgba(255, 255, 255, 0.95);
+  border-color: rgba(17, 17, 17, 0.9);
+  background: rgba(17, 17, 17, 0.92);
+}
+
+.catalogItem {
+  gap: 8px;
+}
+
+.catalogHead {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  font-size: 12px;
+  color: var(--reqagent-muted);
+}
+
+@media (max-width: 1180px) {
+  .hero,
+  .sectionBody,
+  .overviewGrid,
+  .directory,
+  .previewGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    width: min(100vw - 24px, 1400px);
+  }
+
+  .footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

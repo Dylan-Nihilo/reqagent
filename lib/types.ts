@@ -240,13 +240,20 @@ export type AgentActivity =
   | "handoff"
   | "error";
 
-/** Granular tool execution lifecycle. */
-export type ToolExecutionState =
-  | "pending"
-  | "running"
-  | "streaming"
-  | "success"
-  | "error";
+/** Frontend-facing lifecycle for tool invocation rendering. */
+export type ToolInvocationViewState =
+  | "drafting_input"
+  | "input_ready"
+  | "input_invalid"
+  | "awaiting_approval"
+  | "executing"
+  | "streaming_output"
+  | "succeeded"
+  | "denied"
+  | "failed";
+
+/** @deprecated Use ToolInvocationViewState instead. */
+export type ToolExecutionState = ToolInvocationViewState;
 
 /** MCP connection lifecycle (reserved for future use). */
 export type McpConnectionState =
@@ -257,6 +264,37 @@ export type McpConnectionState =
   | "complete"
   | "error";
 
+export type ReqAgentDebugEvent = {
+  index: number;
+  type: string;
+  id?: string;
+  toolCallId?: string;
+  preliminary?: boolean;
+};
+
+export type ReqAgentDebugStep = {
+  index: number;
+  finishReason: string;
+  textPreview?: string;
+  toolCalls: Array<{
+    toolName: string;
+    input?: unknown;
+  }>;
+  toolResults: Array<{
+    toolName: string;
+    outputPreview: string;
+  }>;
+};
+
+export type ReqAgentDebugMeta = {
+  threadId?: string;
+  threadKey?: string;
+  workspaceDir?: string;
+  lastEvent?: ReqAgentDebugEvent;
+  events?: ReqAgentDebugEvent[];
+  steps?: ReqAgentDebugStep[];
+};
+
 /**
  * Server-sent metadata envelope — attached to each assistant message via
  * `toUIMessageStreamResponse({ messageMetadata })`.
@@ -266,44 +304,84 @@ export type ReqAgentMessageMeta = {
   activeRole: ReqAgentRole | null;
   phaseLabel: string;
   publicThinking: string;
+  model?: string;
+  wireApi?: ReqAgentProviderInfo["wireApi"];
+  toolInvocationStates?: Record<string, ToolInvocationViewState>;
+  debug?: ReqAgentDebugMeta;
 };
 
 // ---------------------------------------------------------------------------
 // State conversion helpers
 // ---------------------------------------------------------------------------
 
-/** Map assistant-ui part status → ToolExecutionState. */
-export function normalizeToolExecutionState(status: { type: string }): ToolExecutionState {
-  switch (status.type) {
-    case "requires-action":
-    case "approval-requested":
-    case "approval-responded":
-      return "pending";
-    case "running":
-    case "input-streaming":
-    case "input-available":
-      return "running";
-    case "complete":
-      return "success";
-    case "output-error":
-    case "output-denied":
-    case "incomplete":
-      return "error";
-    default:
-      return "running";
+export function parseToolArgsText(argsText: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(argsText);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
   }
 }
 
-/** Convert ToolExecutionState → legacy ReqAgentToolStatus for existing UI. */
-export function toolExecutionToToolStatus(state: ToolExecutionState): ReqAgentToolStatus {
+export function resolveToolInvocationViewState({
+  argsText,
+  isError,
+  interrupt,
+  metadata,
+  result,
+  status,
+  toolCallId,
+}: {
+  toolCallId: string;
+  status: { type: string };
+  argsText?: string;
+  result?: unknown;
+  isError?: boolean;
+  interrupt?: unknown;
+  metadata?: ReqAgentMessageMeta | null;
+}): ToolInvocationViewState {
+  // Live interrupt always wins — metadata may be stale from an earlier stream chunk
+  if (interrupt || status.type === "requires-action") {
+    return "awaiting_approval";
+  }
+
+  if (status.type === "incomplete" || isError) {
+    return "failed";
+  }
+
+  // Props-based terminal states take precedence over metadata — props come
+  // directly from the SDK converter and are ground truth, while metadata
+  // travels a longer async path and can be stale.
+  if (result !== undefined) {
+    return "succeeded";
+  }
+
+  const metadataState = metadata?.toolInvocationStates?.[toolCallId];
+  if (metadataState) {
+    return metadataState;
+  }
+
+  if (!argsText) {
+    return "drafting_input";
+  }
+
+  return parseToolArgsText(argsText) ? "executing" : "drafting_input";
+}
+
+/** Convert ToolInvocationViewState → compact visual status. */
+export function toolInvocationToToolStatus(state: ToolInvocationViewState): ReqAgentToolStatus {
   switch (state) {
-    case "pending":
-    case "running":
-    case "streaming":
+    case "drafting_input":
+    case "input_ready":
+    case "awaiting_approval":
+    case "executing":
+    case "streaming_output":
       return "running";
-    case "success":
+    case "succeeded":
       return "complete";
-    case "error":
+    case "input_invalid":
+    case "denied":
+    case "failed":
       return "incomplete";
   }
 }

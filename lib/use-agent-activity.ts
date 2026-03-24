@@ -1,6 +1,7 @@
 "use client";
 
 import { useThread } from "@assistant-ui/react";
+import { inferAgentActivityFromMessageParts } from "@/lib/message-parts";
 import type { AgentActivity, ReqAgentMessageMeta } from "@/lib/types";
 
 /**
@@ -23,17 +24,7 @@ export function useAgentActivity(): AgentActivity {
     if (meta?.agentActivity) return meta.agentActivity;
 
     // Layer 1: infer from message parts
-    const parts = last.content;
-    if (!parts || parts.length === 0) return "responding";
-
-    const lastPart = parts[parts.length - 1];
-
-    if (lastPart.type === "reasoning") return "thinking";
-    if (lastPart.type === "tool-call" && !("result" in lastPart && lastPart.result !== undefined)) {
-      return "tool_calling";
-    }
-    if (lastPart.type === "text") return "responding";
-
-    return "responding";
+    const activity = inferAgentActivityFromMessageParts(last.content);
+    return activity ?? "responding";
   });
 }

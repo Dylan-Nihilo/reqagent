@@ -19,13 +19,13 @@ export function ReqReasoningPart() {
 
   return (
     <ReqThinkingBlock
-      agent="Agent"
-      elapsedLabel={mode === "running" ? "..." : "done"}
+      agent="ReqAgent"
+      elapsedLabel={mode === "running" ? "进行中" : mode === "failed" ? "已中断" : "已完成"}
       mode={mode}
       onToggle={() => setOpen((v) => !v)}
       open={open}
-      phaseLabel={mode === "running" ? "推理中" : "推理完成"}
-      summary={reasoning.text || (mode === "running" ? "正在推理……" : "推理已完成。")}
+      phaseLabel={mode === "running" ? "规划中" : mode === "failed" ? "推理中断" : "推理完成"}
+      summary={reasoning.text || (mode === "running" ? "正在整理答案结构……" : "推理已完成。")}
     />
   );
 }
