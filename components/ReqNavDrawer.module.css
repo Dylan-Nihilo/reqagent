@@ -1,0 +1,368 @@
+/* ReqNavDrawer — Stitch-aligned sidebar */
+
+/* ── Sidebar shell ──────────────────────────────── */
+.sidebar {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  padding: 0;
+  overflow: hidden;
+}
+
+.sidebarCollapsed {
+  align-items: center;
+}
+
+/* ── Top: Brand + Toggle ────────────────────────── */
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  flex-shrink: 0;
+}
+
+.sidebarCollapsed .top {
+  justify-content: center;
+  padding: 14px 0 10px;
+}
+
+.brandRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.brandMark {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--ra-text-1);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  letter-spacing: -0.02em;
+}
+
+.brandCopy {
+  min-width: 0;
+}
+
+.brandName {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ra-text-1);
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+.brandMeta {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ra-text-3);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin-top: 1px;
+}
+
+.toggle {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ra-text-3);
+  cursor: pointer;
+  transition:
+    background var(--ra-dur-base) var(--ra-ease-out),
+    color var(--ra-dur-base) var(--ra-ease-out);
+}
+
+.toggle:hover {
+  background: color-mix(in srgb, var(--ra-text-1) 9%, transparent);
+  color: var(--ra-text-1);
+}
+
+.sidebarCollapsed .toggle {
+  margin: 0 auto;
+}
+
+/* ── New Chat Button ────────────────────────────── */
+.primaryActions {
+  padding: 6px 12px 10px;
+  flex-shrink: 0;
+}
+
+.sidebarCollapsed .primaryActions {
+  padding: 6px 0 10px;
+  display: flex;
+  justify-content: center;
+}
+
+.primaryButton {
+  width: 100%;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: var(--ra-radius-md);
+  background: var(--ra-text-1);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: opacity var(--ra-dur-base) var(--ra-ease-out);
+}
+
+.primaryButton:hover {
+  opacity: 0.88;
+}
+
+.primaryIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.primaryLabel {
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 120px;
+  opacity: 1;
+  transition:
+    max-width 320ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebarCollapsed .primaryLabel {
+  max-width: 0;
+  opacity: 0;
+}
+
+.sidebarCollapsed .primaryButton {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--ra-radius-md);
+}
+
+/* ── Section Label ──────────────────────────────── */
+.section {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 8px;
+  scrollbar-width: none;
+}
+
+.section::-webkit-scrollbar {
+  display: none;
+}
+
+.sidebarCollapsed .section {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.sectionLabel {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ra-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0 8px 6px;
+}
+
+/* ── Thread Row ─────────────────────────────────── */
+.threadRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--ra-dur-base) var(--ra-ease-out);
+}
+
+.threadRow:hover {
+  background: color-mix(in srgb, var(--ra-text-1) 7%, transparent);
+}
+
+/* active thread */
+.threadRow.active,
+.threadRow:first-child {
+  background: color-mix(in srgb, var(--ra-text-1) 10%, transparent);
+}
+
+.threadAccent {
+  width: 3px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  background: var(--ra-text-1);
+  opacity: 0.5;
+}
+
+.threadBody {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.threadTitle {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ra-text-1);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.threadMeta {
+  font-size: 11px;
+  color: var(--ra-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* collapsed thread row = square icon button */
+.threadIcon {
+  display: none;
+  color: var(--ra-text-2);
+  flex-shrink: 0;
+}
+
+.sidebarCollapsed .threadIcon {
+  display: flex;
+}
+
+.sidebarCollapsed .threadAccent,
+.sidebarCollapsed .threadBody {
+  display: none;
+}
+
+.sidebarCollapsed .threadRow {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+/* ── Bottom: Agent Card ─────────────────────────── */
+.bottom {
+  flex-shrink: 0;
+  padding: 10px 12px 14px;
+  border-top: 1px solid var(--ra-border-soft);
+  margin-top: 4px;
+}
+
+.sidebarCollapsed .bottom {
+  padding: 10px 0 14px;
+  display: flex;
+  justify-content: center;
+  border-top: 1px solid var(--ra-border-soft);
+}
+
+.agentLabel {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ra-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.agentCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ra-text-1) 6%, transparent);
+  cursor: pointer;
+  transition: background var(--ra-dur-base) var(--ra-ease-out);
+}
+
+.agentCard:hover {
+  background: color-mix(in srgb, var(--ra-text-1) 10%, transparent);
+}
+
+.agentMonogram {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--ra-text-1);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.agentCopy {
+  min-width: 0;
+  flex: 1;
+}
+
+.agentName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ra-text-1);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agentHint {
+  font-size: 11px;
+  color: var(--ra-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+.agentMini {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--ra-text-1);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}

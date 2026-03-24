@@ -1,0 +1,301 @@
+/* ReqAgent Landing Page */
+
+.page {
+  position: relative;
+  min-height: 100dvh;
+  background: var(--ra-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* === Background texture === */
+.page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 20% 20%, oklch(94% 0.012 80 / 0.6) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, oklch(94% 0.010 260 / 0.3) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* === Corner chrome === */
+.cornerTL,
+.cornerTR,
+.cornerBL,
+.cornerBR {
+  position: fixed;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cornerTL { top: 24px; left: 28px; }
+.cornerTR { top: 24px; right: 28px; }
+.cornerBL { bottom: 24px; left: 28px; }
+.cornerBR { bottom: 24px; right: 28px; }
+
+/* === Logo === */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--ra-text-1);
+  user-select: none;
+}
+
+.logoMark {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--ra-text-1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.logoMarkInner {
+  width: 16px;
+  height: 16px;
+  position: relative;
+}
+
+/* R glyph: two vertical bars + arc */
+.logoMarkInner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--ra-surface);
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='white' d='M3 2h5.5a3.5 3.5 0 0 1 0 7H3zm0 7h3l3 5H3z'/%3E%3C/svg%3E");
+  mask-size: contain;
+  mask-repeat: no-repeat;
+}
+
+.logoText {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--ra-text-1);
+}
+
+.logoSub {
+  font-size: 11px;
+  color: var(--ra-text-3);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+/* === Corner buttons === */
+.ghostBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--ra-border);
+  border-radius: var(--ra-radius-md);
+  background: var(--ra-surface);
+  color: var(--ra-text-2);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background var(--ra-dur-base) var(--ra-ease-out),
+    color var(--ra-dur-base) var(--ra-ease-out),
+    border-color var(--ra-dur-base) var(--ra-ease-out),
+    transform var(--ra-dur-base) var(--ra-ease-out),
+    box-shadow var(--ra-dur-base) var(--ra-ease-out);
+  white-space: nowrap;
+}
+
+.ghostBtn:hover {
+  background: var(--ra-overlay);
+  color: var(--ra-text-1);
+  border-color: var(--ra-border-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--ra-shadow-sm);
+}
+
+.ghostBtnIcon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ra-ok);
+  flex-shrink: 0;
+  animation: pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+.versionTag {
+  font-size: 11px;
+  color: var(--ra-text-3);
+  letter-spacing: 0.02em;
+}
+
+/* === Center stage === */
+.stage {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+}
+
+.center {
+  width: min(680px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+/* === Title block === */
+.titleBlock {
+  text-align: center;
+  margin-bottom: 40px;
+  animation: fadeUp var(--ra-dur-enter) var(--ra-ease-out) both;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--ra-border);
+  border-radius: var(--ra-radius-sm);
+  background: var(--ra-surface);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ra-text-3);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+  animation: fadeUp var(--ra-dur-enter) var(--ra-ease-out) 60ms both;
+}
+
+.eyebrowDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ra-text-3);
+}
+
+.title {
+  margin: 0;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: clamp(36px, 6vw, 58px);
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--ra-text-1);
+  animation: fadeUp var(--ra-dur-enter) var(--ra-ease-out) 100ms both;
+}
+
+.titleAccent {
+  font-style: italic;
+  color: var(--ra-text-2);
+}
+
+.subtitle {
+  margin: 14px 0 0;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ra-text-3);
+  max-width: 440px;
+  animation: fadeUp var(--ra-dur-enter) var(--ra-ease-out) 140ms both;
+}
+
+/* === Composer wrapper === */
+.composerWrap {
+  width: 100%;
+  animation: fadeUp var(--ra-dur-enter) var(--ra-ease-out) 180ms both;
+}
+
+/* === Suggestion chips === */
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 16px;
+  animation: fadeUp var(--ra-dur-enter) var(--ra-ease-out) 220ms both;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 1px solid var(--ra-border-soft);
+  border-radius: var(--ra-radius-sm);
+  background: transparent;
+  color: var(--ra-text-3);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition:
+    background var(--ra-dur-base) var(--ra-ease-out),
+    color var(--ra-dur-base) var(--ra-ease-out),
+    border-color var(--ra-dur-base) var(--ra-ease-out);
+  text-align: left;
+}
+
+.chip:hover {
+  background: var(--ra-surface);
+  color: var(--ra-text-2);
+  border-color: var(--ra-border);
+}
+
+.chipArrow {
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity var(--ra-dur-base) var(--ra-ease-out),
+    transform var(--ra-dur-base) var(--ra-ease-out);
+  font-size: 11px;
+}
+
+.chip:hover .chipArrow {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* === Animations === */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* === Responsive === */
+@media (max-width: 640px) {
+  .cornerTL { top: 16px; left: 16px; }
+  .cornerTR { top: 16px; right: 16px; }
+  .cornerBL { bottom: 16px; left: 16px; }
+  .cornerBR { bottom: 16px; right: 16px; }
+  .logoSub { display: none; }
+  .suggestions { gap: 6px; }
+  .chip { font-size: 12px; padding: 5px 10px; }
+}

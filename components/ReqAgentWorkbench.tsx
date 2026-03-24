@@ -78,7 +78,12 @@ export function ReqAgentWorkbench({
       ) : null}
       {navOpen ? (
         <div className={styles.navDrawer}>
-          <ReqNavDrawer currentAgent={currentAgent} hint={navHint} onClose={onNavClose} threadTitle={threadTitle} />
+          <ReqNavDrawer
+            currentAgent={currentAgent}
+            hint={navHint}
+            onToggle={onNavClose}
+            threadTitle={threadTitle}
+          />
         </div>
       ) : null}
 

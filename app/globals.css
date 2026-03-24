@@ -1,53 +1,126 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap');
 @import "tailwindcss";
 
 :root {
-  --reqagent-bg: #f5f5f4;
-  --reqagent-bg-accent: #efefee;
-  --reqagent-panel: #ffffff;
-  --reqagent-panel-soft: #fafaf9;
-  --reqagent-panel-muted: #f2f2f1;
-  --reqagent-line: rgba(17, 17, 17, 0.08);
-  --reqagent-line-strong: rgba(17, 17, 17, 0.16);
-  --reqagent-text: #111111;
-  --reqagent-text-soft: #3f3f46;
-  --reqagent-muted: #71717a;
-  --reqagent-muted-soft: #a1a1aa;
-  --reqagent-accent-soft: rgba(17, 17, 17, 0.06);
-  --reqagent-ok: #27272a;
-  --reqagent-ok-soft: rgba(39, 39, 42, 0.08);
-  --reqagent-err: #52525b;
-  --reqagent-err-soft: rgba(82, 82, 91, 0.08);
+  /* === Surfaces === */
+  --ra-bg:            #faf9f5;              /* Stitch surface = warm canvas */
+  --ra-surface:       #ffffff;              /* Stitch surface-container-lowest */
+  --ra-surface-sub:   #f5f4f0;              /* Stitch surface-container-low — sidebar */
+  --ra-overlay:       #efeeea;              /* Stitch surface-container */
+
+  /* === Text === */
+  --ra-text-1:        #1b1c1a;              /* Stitch on-background */
+  --ra-text-2:        #5f5e5e;              /* Stitch secondary */
+  --ra-text-3:        #777777;              /* Stitch outline */
+
+  /* === Borders === */
+  --ra-border:        #e3e2df;              /* Stitch surface-container-highest */
+  --ra-border-soft:   #efeeea;              /* Stitch surface-container */
+  --ra-border-strong: #dbdad6;              /* Stitch surface-dim */
+
+  /* === Semantic States === */
+  --ra-ok:            oklch(50% 0.13 145);
+  --ra-ok-soft:       oklch(96% 0.04 145);
+  --ra-ok-line:       oklch(82% 0.08 145);
+
+  --ra-err:           oklch(50% 0.15 20);
+  --ra-err-soft:      oklch(96.5% 0.04 20);
+  --ra-err-line:      oklch(82% 0.10 20);
+
+  --ra-warn:          oklch(56% 0.13 60);
+  --ra-warn-soft:     oklch(96.5% 0.04 60);
+  --ra-warn-line:     oklch(84% 0.07 60);
+
+  --ra-pending:       oklch(60% 0.006 260);
+  --ra-pending-soft:  oklch(95% 0.003 260);
+  --ra-pending-line:  oklch(86% 0.005 260);
+
+  /* === Accent === */
+  --ra-accent:        oklch(36% 0.010 260);
+  --ra-accent-soft:   oklch(94% 0.010 260);
+
+  /* === Legacy aliases (keep for existing components) === */
+  --reqagent-bg:            var(--ra-bg);
+  --reqagent-bg-accent:     oklch(95.5% 0.006 80);
+  --reqagent-panel:         var(--ra-surface);
+  --reqagent-panel-soft:    oklch(98.5% 0.003 80);
+  --reqagent-panel-muted:   oklch(95.8% 0.005 80);
+  --reqagent-line:          color-mix(in oklch, var(--ra-text-1) 8%, transparent);
+  --reqagent-line-strong:   color-mix(in oklch, var(--ra-text-1) 16%, transparent);
+  --reqagent-text:          var(--ra-text-1);
+  --reqagent-text-soft:     var(--ra-text-2);
+  --reqagent-muted:         var(--ra-text-3);
+  --reqagent-muted-soft:    oklch(74% 0.004 260);
+  --reqagent-accent-soft:   color-mix(in oklch, var(--ra-text-1) 6%, transparent);
+  --reqagent-ok:            var(--ra-ok);
+  --reqagent-ok-soft:       var(--ra-ok-soft);
+  --reqagent-err:           var(--ra-err);
+  --reqagent-err-soft:      var(--ra-err-soft);
+  --reqagent-pending:       var(--ra-pending);
+  --reqagent-pending-soft:  var(--ra-pending-soft);
+  --reqagent-pending-line:  var(--ra-pending-line);
+  --reqagent-streaming:     oklch(58% 0.008 240);
+  --reqagent-streaming-soft:oklch(95% 0.005 240);
+  --reqagent-streaming-line:oklch(84% 0.007 240);
+  --reqagent-complete:      oklch(56% 0.006 260);
+  --reqagent-complete-soft: oklch(95.5% 0.004 260);
+  --reqagent-complete-line: oklch(85% 0.005 260);
+  --reqagent-cancelled:     oklch(55% 0.06 80);
+  --reqagent-cancelled-soft:oklch(96% 0.03 80);
+  --reqagent-cancelled-line:oklch(84% 0.05 80);
+  --reqagent-failed:        var(--ra-err);
+  --reqagent-failed-soft:   var(--ra-err-soft);
+  --reqagent-failed-line:   var(--ra-err-line);
   --reqagent-mono:
-    "SFMono-Regular", "SF Mono", "JetBrains Mono", "Menlo", "Monaco", "Consolas",
-    "Liberation Mono", monospace;
+    "Geist Mono", "SFMono-Regular", "SF Mono", "JetBrains Mono", "Menlo", monospace;
+
+  /* === Spacing & Radius === */
+  --ra-radius-sm:   6px;
+  --ra-radius-md:   10px;
+  --ra-radius-lg:   16px;
+  --ra-radius-xl:   24px;
+  --ra-radius-full: 999px;
+
+  /* === Layout === */
+  --ra-panel-width: 320px;
+  --ra-panel-slide-dur: 300ms;
+  --ra-topbar-height: 44px;
+  --ra-sidebar-width: 260px;
+  --ra-sidebar-collapsed-width: 72px;
+  --ra-thread-max-width: 760px;
+  --ra-thread-max-width-with-panel: 680px;
+
+  /* === Shadow === */
+  --ra-shadow-sm: 0 1px 3px oklch(16% 0.008 260 / 0.06);
+  --ra-shadow-md: 0 4px 16px oklch(16% 0.008 260 / 0.08);
+  --ra-shadow-lg: 0 12px 40px oklch(16% 0.008 260 / 0.10);
+
+  /* === Easing === */
+  --ra-ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ra-ease-in:     cubic-bezier(0.7, 0, 0.84, 0);
+
+  /* === Duration === */
+  --ra-dur-fast:   80ms;
+  --ra-dur-base:   140ms;
+  --ra-dur-slow:   240ms;
+  --ra-dur-enter:  360ms;
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
+*, *::before, *::after { box-sizing: border-box; }
 
-html {
-  height: 100%;
-}
+html { height: 100%; }
 
 body {
   min-height: 100%;
   margin: 0;
-  background: var(--reqagent-bg);
-  color: var(--reqagent-text);
-  font-family:
-    "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  background: var(--ra-bg);
+  color: var(--ra-text-1);
+  font-family: "Geist", "Helvetica Neue", "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
-button,
-input,
-textarea {
-  font: inherit;
-}
-
-a {
-  color: inherit;
-}
+button, input, textarea { font: inherit; }
+a { color: inherit; }

@@ -148,20 +148,29 @@
 }
 
 .thinkingCard {
-  width: min(100%, 72ch);
-  padding: 12px 14px;
-  border: 1px solid var(--reqagent-line);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.94);
+  width: 100%;
+  display: grid;
+  gap: 0;
+  padding: 2px 0 0;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+}
+
+.thinkingCardOpen {
+  background: transparent;
+}
+
+.thinkingCardCollapsed {
+  background: transparent;
 }
 
 .thinkingCardCompleted {
-  background: var(--reqagent-panel-soft);
+  background: transparent;
 }
 
 .thinkingCardFailed {
-  background: var(--reqagent-err-soft);
-  border-color: rgba(82, 82, 91, 0.18);
+  background: transparent;
 }
 
 .thinkingToggle {
@@ -177,11 +186,25 @@
   text-align: left;
 }
 
+.thinkingMain {
+  min-width: 0;
+  flex: 1;
+}
+
 .thinkingHead {
   display: flex;
   align-items: baseline;
   gap: 10px;
   min-width: 0;
+}
+
+.thinkingCollapsedLabel {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  color: var(--reqagent-muted);
 }
 
 .thinkingLabel {
@@ -212,17 +235,45 @@
 .thinkingChevronOpen {
   display: inline-block;
   color: var(--reqagent-muted-soft);
-  transition: transform 150ms ease;
+  transition: transform var(--ra-dur-base) var(--ra-ease-out), color var(--ra-dur-base) var(--ra-ease-out);
 }
 
 .thinkingChevronOpen {
   transform: rotate(180deg);
 }
 
+.thinkingBody {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--ra-dur-slow) var(--ra-ease-out);
+}
+
+.thinkingBodyOpen {
+  grid-template-rows: 1fr;
+}
+
+.thinkingContentWrap {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.thinkingContentWrap {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition:
+    opacity var(--ra-dur-slow) var(--ra-ease-out),
+    transform var(--ra-dur-slow) var(--ra-ease-out);
+}
+
+.thinkingBodyOpen .thinkingContentWrap {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .thinkingContent {
-  margin-top: 12px;
-  padding-left: 14px;
-  border-left: 1px solid var(--reqagent-line-strong);
+  margin-top: 10px;
+  padding: 2px 0 0 14px;
+  border-left: 2px solid var(--reqagent-line-strong);
 }
 
 .thinkingSummary {
@@ -243,9 +294,17 @@
   padding: 7px 10px;
   border: 1px solid var(--reqagent-line);
   border-radius: 999px;
-  background: var(--reqagent-panel-soft);
+  background: rgba(17, 17, 17, 0.03);
   font-size: 11px;
   color: var(--reqagent-text-soft);
+}
+
+.thinkingCardCompleted .thinkingContent {
+  border-left-color: color-mix(in oklch, var(--reqagent-text) 12%, transparent);
+}
+
+.thinkingCardFailed .thinkingContent {
+  border-left-color: var(--reqagent-failed-line);
 }
 
 .thinkingChip {
@@ -271,6 +330,14 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinkingChevron,
+  .thinkingBody,
+  .thinkingContentWrap {
+    transition: none;
+  }
 }
 
 .toolCard {
@@ -428,6 +495,128 @@
   margin-top: 10px;
 }
 
+.toolDisclosure {
+  margin-top: 10px;
+}
+
+.toolDisclosureButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--reqagent-text-soft);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: color 140ms ease, opacity 140ms ease;
+}
+
+.toolDisclosureButton:hover:not(:disabled) {
+  color: var(--reqagent-text);
+}
+
+.toolDisclosureButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.toolTerminal {
+  border-top: 1px solid var(--reqagent-line);
+  background: var(--reqagent-panel-soft);
+}
+
+.toolTerminalToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--reqagent-line);
+}
+
+.toolTerminalMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.toolTerminalBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--reqagent-line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--reqagent-text-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.toolTerminalBadgeNeutral {
+  background: rgba(17, 17, 17, 0.04);
+  color: var(--reqagent-text);
+}
+
+.toolTerminalBadgeError {
+  background: var(--reqagent-err-soft);
+  color: var(--reqagent-err);
+}
+
+.toolTerminalContent {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.toolTerminalSection {
+  display: grid;
+  gap: 6px;
+}
+
+.toolTerminalLabel {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--reqagent-muted);
+}
+
+.toolTerminalPre {
+  margin: 0;
+  overflow-x: auto;
+  padding: 12px;
+  border: 1px solid var(--reqagent-line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--reqagent-text);
+  font-family: var(--reqagent-mono);
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.toolTerminalPreError {
+  border-color: rgba(82, 82, 91, 0.18);
+  background: var(--reqagent-err-soft);
+  color: var(--reqagent-err);
+}
+
+.toolTerminalEmpty,
+.toolTerminalNote {
+  margin: 0;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--reqagent-text-soft);
+}
+
 .composerRoot {
   width: 100%;
 }
@@ -438,13 +627,13 @@
   gap: 8px;
   padding: 10px 12px;
   border: 1px solid var(--reqagent-line);
-  border-radius: 20px;
-  background: var(--reqagent-panel-soft);
+  border-radius: 18px;
+  background: color-mix(in oklch, var(--ra-surface) 92%, white 8%);
 }
 
 .composerFrame:focus-within {
   border-color: var(--reqagent-line-strong);
-  box-shadow: none;
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ra-text-1) 5%, transparent);
 }
 
 .composerLanding {
@@ -453,7 +642,9 @@
 }
 
 .composerThread {
+  min-height: 60px;
   padding: 10px 12px;
+  border-radius: 18px;
 }
 
 .composerInput {
@@ -482,7 +673,7 @@
 
 .composerThread .composerInput,
 .composerInputThread {
-  min-height: 52px;
+  min-height: 44px;
   max-height: 168px;
 }
 
@@ -521,7 +712,7 @@
 }
 
 .composerHint {
-  margin-top: 10px;
+  margin-top: 8px;
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -701,7 +892,7 @@
   padding: 7px 12px;
   font-size: 11px;
   color: var(--reqagent-text-soft);
-  box-shadow: 0 8px 20px rgba(17, 17, 17, 0.04);
+  box-shadow: 0 10px 24px rgba(17, 17, 17, 0.05);
 }
 
 .streamingIndicator {
