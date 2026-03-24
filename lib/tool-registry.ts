@@ -1,0 +1,171 @@
+export type ToolCategory = "structured" | "workspace" | "execution" | "interaction";
+export type ToolRiskLevel = "safe" | "caution" | "sensitive";
+export type ToolRendererKind = "structured" | "terminal" | "catalog";
+
+export type ToolRegistryItem = {
+  name: string;
+  title: string;
+  category: ToolCategory;
+  description: string;
+  usageHint: string;
+  riskLevel: ToolRiskLevel;
+  preferredOrder: number;
+  supportsApproval: boolean;
+  rendererKind: ToolRendererKind;
+};
+
+export type AvailableToolDescriptor = {
+  name: string;
+  title: string;
+  description: string;
+  usageHint: string;
+  riskLevel: ToolRiskLevel;
+  preferredToBash: boolean;
+  supportsApproval: boolean;
+};
+
+export type AvailableToolGroup = {
+  key: ToolCategory;
+  title: string;
+  tools: AvailableToolDescriptor[];
+};
+
+export type AvailableToolsResult = {
+  total: number;
+  groups: AvailableToolGroup[];
+  summary: string;
+};
+
+export const toolCategoryLabels: Record<ToolCategory, string> = {
+  structured: "结构化工具",
+  workspace: "工作区工具",
+  execution: "执行工具",
+  interaction: "交互 / 审批",
+};
+
+export const toolRiskLabels: Record<ToolRiskLevel, string> = {
+  safe: "低风险",
+  caution: "需谨慎",
+  sensitive: "高影响",
+};
+
+export const toolRegistry: ToolRegistryItem[] = [
+  {
+    name: "search_knowledge",
+    title: "知识检索",
+    category: "structured",
+    description: "搜索领域模式和最佳实践，为需求拆解提供参考。",
+    usageHint: "用户在描述产品需求、领域规则或行业流程时优先使用。",
+    riskLevel: "safe",
+    preferredOrder: 10,
+    supportsApproval: false,
+    rendererKind: "structured",
+  },
+  {
+    name: "list_files",
+    title: "文件列表",
+    category: "workspace",
+    description: "查看工作区目录结构，快速判断项目布局。",
+    usageHint: "第一次进入工作区或需要确认目录边界时优先使用。",
+    riskLevel: "safe",
+    preferredOrder: 20,
+    supportsApproval: false,
+    rendererKind: "structured",
+  },
+  {
+    name: "search_workspace",
+    title: "工作区搜索",
+    category: "workspace",
+    description: "在工作区里搜索代码、配置和文档文本。",
+    usageHint: "找函数、配置项、错误信息时优先于 bash grep。",
+    riskLevel: "safe",
+    preferredOrder: 30,
+    supportsApproval: false,
+    rendererKind: "structured",
+  },
+  {
+    name: "readFile",
+    title: "读取文件",
+    category: "workspace",
+    description: "读取指定文件的完整内容。",
+    usageHint: "已经定位到具体文件后使用，避免先上 bash cat。",
+    riskLevel: "safe",
+    preferredOrder: 40,
+    supportsApproval: false,
+    rendererKind: "structured",
+  },
+  {
+    name: "writeFile",
+    title: "写入文件",
+    category: "execution",
+    description: "创建或更新工作区文件内容。",
+    usageHint: "需要生成文档或修改工作区文件时使用。",
+    riskLevel: "sensitive",
+    preferredOrder: 50,
+    supportsApproval: true,
+    rendererKind: "structured",
+  },
+  {
+    name: "bash",
+    title: "Shell 执行",
+    category: "execution",
+    description: "执行 shell 命令并返回 stdout / stderr。",
+    usageHint: "只有结构化工具不够用时再使用。",
+    riskLevel: "sensitive",
+    preferredOrder: 60,
+    supportsApproval: true,
+    rendererKind: "terminal",
+  },
+  {
+    name: "list_available_tools",
+    title: "工具目录",
+    category: "interaction",
+    description: "结构化返回当前可用工具清单和推荐使用顺序。",
+    usageHint: "当用户询问“你有哪些工具”时使用，而不是自由文本列举。",
+    riskLevel: "safe",
+    preferredOrder: 70,
+    supportsApproval: false,
+    rendererKind: "catalog",
+  },
+];
+
+const toolRegistryByName = new Map(toolRegistry.map((tool) => [tool.name, tool] as const));
+
+export function getToolRegistryItem(toolName: string): ToolRegistryItem | undefined {
+  return toolRegistryByName.get(toolName);
+}
+
+export function getAvailableToolsResult(): AvailableToolsResult {
+  const groups = [...toolRegistry]
+    .sort((left, right) => left.preferredOrder - right.preferredOrder)
+    .reduce<Record<ToolCategory, AvailableToolDescriptor[]>>(
+      (accumulator, tool) => {
+        accumulator[tool.category].push({
+          name: tool.name,
+          title: tool.title,
+          description: tool.description,
+          usageHint: tool.usageHint,
+          riskLevel: tool.riskLevel,
+          preferredToBash: tool.name !== "bash",
+          supportsApproval: tool.supportsApproval,
+        });
+        return accumulator;
+      },
+      {
+        structured: [],
+        workspace: [],
+        execution: [],
+        interaction: [],
+      },
+    );
+
+  return {
+    total: toolRegistry.length,
+    groups: (Object.keys(toolCategoryLabels) as ToolCategory[]).map((key) => ({
+      key,
+      title: toolCategoryLabels[key],
+      tools: groups[key],
+    })),
+    summary: "已按类别整理当前工具，并标记推荐顺序与风险级别。",
+  };
+}
