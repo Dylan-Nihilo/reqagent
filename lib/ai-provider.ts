@@ -54,6 +54,8 @@ export type ReqAgentProviderInfo = {
   wireApi: WireApi;
 };
 
+export type ProviderInfo = ReturnType<typeof getProviderInfo>;
+
 export function getProviderInfo(): ReqAgentProviderInfo {
   return {
     providerName: isOfficialOpenAIBaseURL(baseURL) ? "openai" : "custom-openai",
