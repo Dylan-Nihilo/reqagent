@@ -1,0 +1,20 @@
+{
+  "servers": [
+    {
+      "id": "filesystem",
+      "label": "Workspace Filesystem",
+      "description": "Read and write files in the active ReqAgent workspace via MCP. Tools: read_file, write_file, list_directory, create_directory, move_file, search_files, get_file_info.",
+      "executionMode": "proxy",
+      "toolPrefix": "fs",
+      "transport": {
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "${REQAGENT_WORKSPACE_DIR}"
+        ]
+      }
+    }
+  ]
+}
