@@ -2,6 +2,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import {
   streamText,
+  generateText,
   tool,
   jsonSchema,
   stepCountIs,
@@ -371,29 +372,24 @@ const customTools = {
 
 const SYSTEM_PROMPT = `你是 ReqAgent，一个 AI 助手。用中文回复，代码和路径保持英文。
 
-你有以下工具：
+重要：如果用户只是打招呼、闲聊、问一般知识性问题，直接用文字回复，不要调用任何工具。只在用户明确要求操作文件、搜索内容、执行命令或访问外部资源时才使用工具。
 
-结构化工具（优先使用）：
-- list_files: 查看工作区目录结构（含 type/size/mtime）。首先使用这个了解项目布局。
-- search_workspace: 在工作区中搜索文本，支持 glob、regex、上下文行和相关性排序。找代码、找文档用这个。
-- readFile: 读取文件内容，支持 offset/limit 分段读取大文件，也支持 base64 返回原始文件内容。
-- writeFile: 写入文件，支持 overwrite/append/patch 三种模式。patch 模式支持 replaceAll。
-- fetch_url: 抓取任意网页并返回 Markdown。用户分享链接、查竞品、查文档时调用。
-- list_available_tools: 返回实际挂载的工具目录。当用户问”你能做什么”时调用。
-
-Shell 工具：
-- bash: 在工作区目录下执行任意 shell 命令。支持 python3、node、git、curl 等系统命令。复杂操作或需要系统工具时使用。
-
-动态外部工具：
-- MCP 工具：如果系统已经接入外部 MCP server，会自动出现在工具列表中。
+可用工具（仅在需要时使用）：
+- list_files: 查看工作区目录结构。
+- search_workspace: 全文搜索工作区文件。
+- readFile: 读取文件内容。
+- writeFile: 写入/修改文件。
+- fetch_url: 抓取网页内容。
+- bash: 执行 shell 命令。
+- list_available_tools: 查看可用工具列表。
 
 工作原则：
-1. 了解项目 → 先 list_files，再针对性 readFile
-2. 搜索内容 → 优先用 search_workspace（支持 glob 过滤）
-3. 读写文件 → 用 readFile / writeFile（小修改用 patch 模式）
-4. 系统命令 / 运行代码 → 用 bash（python3、node 等均可用）
-5. 外部系统 → 优先用对应 MCP 工具
-6. 总是先用结构化工具，bash 用于需要系统能力的场景`;
+1. 简单对话直接回复，不调工具
+2. 需要了解项目时 → list_files，再针对性 readFile
+3. 搜索内容 → search_workspace
+4. 文件读写 → readFile / writeFile
+5. 系统命令 → bash
+6. 外部系统 → 对应 MCP 工具`;
 
 export async function POST(req: Request) {
   const body = await req.json();
@@ -568,21 +564,17 @@ export async function POST(req: Request) {
           compareWorkspaceEntries(left, right, effectiveSort),
         );
         const limitedEntries = sortedEntries.slice(0, requestedLimit);
-        const fileCount = sortedEntries.filter((entry) => entry.type === "file").length;
-        const dirCount = sortedEntries.filter((entry) => entry.type === "dir").length;
-        const totalSize = sortedEntries.reduce((sum, entry) => sum + (entry.size ?? 0), 0);
+        // Compact output: only include path strings to minimize token usage.
+        // Full metadata (size/mtime) is available via readFile if needed.
+        const compactEntries = limitedEntries.map((entry) =>
+          entry.type === "dir" ? entry.path : `${entry.path} (${entry.size ?? 0}B)`,
+        );
 
         return {
           root: dir || ".",
-          sort: effectiveSort,
-          showHidden: includeHidden,
-          entries: limitedEntries,
-          count: limitedEntries.length,
-          totalEntries: sortedEntries.length,
+          files: compactEntries,
+          count: compactEntries.length,
           truncated: discoveredTruncated || sortedEntries.length > requestedLimit,
-          fileCount,
-          dirCount,
-          totalSize,
         };
       },
     }),
@@ -716,17 +708,15 @@ export async function POST(req: Request) {
           .slice(0, maxResults)
           .map(({ score: _score, ...match }) => match);
 
+        // Compact output: drop context lines, only keep path:line + match snippet
+        const compactMatches = rankedMatches.map(({ context: _ctx, ...match }) => match);
+
         return {
           query,
-          regex: Boolean(regex),
-          glob: globMatcher?.pattern,
-          found: rankedMatches.length,
+          found: compactMatches.length,
           totalMatches,
-          filesSearched,
-          filesMatched,
-          maxFileSize: maxBytes,
-          matches: rankedMatches,
-          truncated: totalMatches > rankedMatches.length,
+          matches: compactMatches,
+          truncated: totalMatches > compactMatches.length,
         };
       },
     }),
@@ -949,6 +939,25 @@ export async function POST(req: Request) {
     messages: await convertToModelMessages(uiMessages),
     tools: allTools,
     stopWhen: stepCountIs(8),
+    prepareStep: () => {
+      // All tools available in all steps. MCP tool names now use underscores (OpenAI-safe).
+      return {};
+    },
+    experimental_repairToolCall: async ({ toolCall, tools, messages, system, inputSchema, error }) => {
+      console.log(`[ReqAgent repair] tool=${toolCall.toolName} input=${toolCall.input?.slice(0, 80)} err=${error.message?.slice(0, 80)}`);
+      const schema = await inputSchema({ toolName: toolCall.toolName });
+      const { text } = await generateText({
+        model: reqAgentModel,
+        system: "You repair a malformed or truncated tool call JSON. Return ONLY valid JSON that matches the schema. No explanation.",
+        prompt: `Tool: ${toolCall.toolName}\nSchema: ${JSON.stringify(schema)}\nMalformed input: ${toolCall.input}\nUser message context: ${JSON.stringify(messages.slice(-2))}\n\nReturn valid JSON only:`,
+      });
+      try {
+        JSON.parse(text.trim());
+        return { ...toolCall, input: text.trim() };
+      } catch {
+        return null;
+      }
+    },
     providerOptions: {
       openai: { store: providerInfo.wireApi === "responses" ? true : undefined },
     },
