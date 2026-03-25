@@ -12,6 +12,8 @@ import {
   syncThreadUiMessages,
 } from "@/lib/db/store";
 import { buildMcpRuntime } from "@/lib/mcp";
+import { buildSkillRuntime, listSkills } from "@/lib/skills/loader";
+import { matchSkillsForMessage } from "@/lib/skills/matcher";
 import type { ToolInvocationViewState } from "@/lib/types";
 import {
   ensureWorkspaceDirectory,
@@ -20,6 +22,7 @@ import {
 } from "@/lib/workspace/context";
 import { buildMetadataHandler } from "@/lib/workspace/streaming-metadata";
 import { buildWorkspaceTools } from "@/lib/workspace/workspace-tools";
+import { buildDocxTools } from "@/lib/workspace/docx-tools";
 
 export const maxDuration = 60;
 
@@ -34,6 +37,8 @@ const SYSTEM_PROMPT = `你是 ReqAgent，一个 AI 助手。用中文回复，�
 - writeFile: 写入/修改文件。
 - fetch_url: 抓取网页内容。
 - bash: 执行 shell 命令。
+- parse_docx: 读取 .docx 文件，提取文本和标题结构。
+- export_docx: 将 Markdown 内容导出为 .docx 文件。
 - list_available_tools: 查看可用工具列表。
 
 工作原则：
@@ -74,6 +79,10 @@ export async function POST(req: Request) {
     syncThreadUiMessages(persistedThread.id, uiMessages);
   }
 
+  // Auto-load all available skills — agent-native: AI decides what to use
+  const allSkillManifests = await listSkills();
+  const allSkillIds = allSkillManifests.map((s) => s.id);
+
   const runtimeContext = {
     threadId: persistedThread.id,
     threadKey,
@@ -85,23 +94,43 @@ export async function POST(req: Request) {
   await ensureWorkspaceDirectory(runtimeContext.workspaceDir);
 
   const toolInvocationStates: Record<string, ToolInvocationViewState> = {};
-  const mcpRuntime = await buildMcpRuntime({
-    workspaceId: runtimeContext.workspaceId,
-    workspaceKey: runtimeContext.workspaceKey,
-    workspaceDir: runtimeContext.workspaceDir,
-    threadId: runtimeContext.threadId,
-    threadKey: runtimeContext.threadKey,
-  });
+  const [mcpRuntime, skillRuntime] = await Promise.all([
+    buildMcpRuntime({
+      workspaceId: runtimeContext.workspaceId,
+      workspaceKey: runtimeContext.workspaceKey,
+      workspaceDir: runtimeContext.workspaceDir,
+      threadId: runtimeContext.threadId,
+      threadKey: runtimeContext.threadKey,
+    }),
+    buildSkillRuntime(allSkillIds),
+  ]);
   const workspaceTools = buildWorkspaceTools(runtimeContext, mcpRuntime);
+  const docxTools = buildDocxTools(runtimeContext);
   const allTools = {
     ...workspaceTools,
+    ...docxTools,
     ...mcpRuntime.tools,
   };
+  // Match skills against user's latest message — agent-native: decide
+  // which skills are relevant BEFORE generating, show "loaded skill X" immediately
+  const lastUserMessage = uiMessages
+    .filter((m) => m.role === "user")
+    .pop();
+  const lastUserText = lastUserMessage?.parts
+    ?.filter((p): p is { type: "text"; text: string } => (p as { type: string }).type === "text")
+    .map((p) => p.text)
+    .join(" ") ?? "";
+  const matchedSkills = matchSkillsForMessage(
+    lastUserText,
+    skillRuntime.skills.map((s) => s.manifest),
+  );
+
   const metadata = buildMetadataHandler({
     runtimeContext,
     mcpServers: mcpRuntime.servers,
     providerInfo,
     toolInvocationStates,
+    matchedSkills,
   });
 
   let result;
@@ -114,6 +143,7 @@ export async function POST(req: Request) {
         `当前会话 thread_key: ${runtimeContext.threadKey}\n` +
         `当前工作区目录: ${runtimeContext.workspaceDir}\n` +
         `${mcpRuntime.promptSection}\n` +
+        `${skillRuntime.promptSection}\n` +
         "需求文档默认写入 docs/requirements.md。\n" +
         "不要使用 bash 创建、覆盖或移动文档文件；文件读写一律使用 readFile / writeFile 或已接入的文件系统工具。\n" +
         "所有文件操作都以当前项目工作区为根目录，路径统一使用相对路径。",

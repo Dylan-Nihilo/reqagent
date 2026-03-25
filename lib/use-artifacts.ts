@@ -17,6 +17,8 @@ export type ReqArtifactItem = {
   exportName: string;
   toolName: string;
   order: number;
+  /** Server-side download URL for binary artifacts (e.g. .docx). */
+  downloadUrl?: string;
 };
 
 export type ReqPendingArtifact = {
@@ -48,13 +50,13 @@ type ArtifactCollection = {
   pending: ReqPendingArtifact | null;
 };
 
-export function useArtifacts(): ArtifactCollection {
+export function useArtifacts(workspaceId?: string): ArtifactCollection {
   const messages = useThread((state) => state.messages);
 
-  return useMemo(() => deriveArtifacts(messages as readonly ThreadMessageLike[]), [messages]);
+  return useMemo(() => deriveArtifacts(messages as readonly ThreadMessageLike[], workspaceId), [messages, workspaceId]);
 }
 
-function deriveArtifacts(messages: readonly ThreadMessageLike[]): ArtifactCollection {
+function deriveArtifacts(messages: readonly ThreadMessageLike[], workspaceId?: string): ArtifactCollection {
   const itemsById = new Map<string, ReqArtifactItem>();
   let latestPending: ReqPendingArtifact | null = null;
   let order = 0;
@@ -76,6 +78,7 @@ function deriveArtifacts(messages: readonly ThreadMessageLike[]): ArtifactCollec
         args,
         result,
         order,
+        workspaceId,
       });
 
       if (readyArtifact && result !== undefined) {
@@ -109,12 +112,14 @@ function buildArtifact({
   args,
   result,
   order,
+  workspaceId,
 }: {
   toolName: string;
   toolCallId: string;
   args: Record<string, unknown> | null;
   result: unknown;
   order: number;
+  workspaceId?: string;
 }): ReqArtifactItem | null {
   const output = asRecord(result);
 
@@ -133,6 +138,10 @@ function buildArtifact({
       return buildDocumentArtifactFromWrite(args, output, toolCallId, toolName, order);
     case "readFile":
       return buildDocumentArtifactFromRead(output, toolCallId, toolName, order);
+    case "export_docx":
+      return buildDocxExportArtifact(output, toolCallId, toolName, order, workspaceId);
+    case "parse_docx":
+      return buildDocxParseArtifact(output, toolCallId, toolName, order);
     case "search_knowledge":
       return buildKnowledgeArtifact(output, toolCallId, toolName, order);
     case "fetch_url":
@@ -195,6 +204,24 @@ function buildPendingArtifact({
         toolName,
       };
     }
+    case "export_docx":
+      return {
+        id: `pending:${toolCallId}`,
+        kind: "document",
+        icon: "⊞",
+        label: "DOCX 文档",
+        summary: "正在生成 DOCX 文档…",
+        toolName,
+      };
+    case "parse_docx":
+      return {
+        id: `pending:${toolCallId}`,
+        kind: "knowledge",
+        icon: "◎",
+        label: "读取模板",
+        summary: "正在解析 DOCX 文件…",
+        toolName,
+      };
     case "search_knowledge":
     case "fetch_url":
       return {
@@ -442,6 +469,84 @@ function buildFetchedReferenceArtifact(
     meta: `${formatCount(normalizeNumber(output.charCount) ?? content.length)} chars · ${host}`,
     markdown: content,
     exportName: `${slugify(host)}-reference.md`,
+    toolName,
+    order,
+  };
+}
+
+function buildDocxExportArtifact(
+  output: Record<string, unknown> | null,
+  toolCallId: string,
+  toolName: string,
+  order: number,
+  workspaceId?: string,
+): ReqArtifactItem | null {
+  if (!output) return null;
+
+  const outputPath = normalizeString(output.outputPath);
+  const downloadName = normalizeString(output.downloadName) || "document.docx";
+  const previewMarkdown = normalizeString(output.previewMarkdown);
+  const sizeBytes = normalizeNumber(output.sizeBytes);
+
+  if (!outputPath && !previewMarkdown) return null;
+
+  const title = headingFromMarkdown(previewMarkdown) || downloadName;
+  const downloadUrl = outputPath && workspaceId
+    ? `/api/workspace/download?workspaceId=${encodeURIComponent(workspaceId)}&path=${encodeURIComponent(outputPath)}`
+    : undefined;
+
+  return {
+    id: `artifact:docx:${toolCallId}`,
+    kind: "document",
+    icon: "⊞",
+    label: "DOCX 文档",
+    summary: title,
+    meta: sizeBytes !== null
+      ? `${(sizeBytes / 1024).toFixed(1)} KB · ${downloadName}`
+      : downloadName,
+    markdown: previewMarkdown || `*文档已导出: ${downloadName}*`,
+    exportName: downloadName,
+    toolName,
+    order,
+    downloadUrl,
+  };
+}
+
+function buildDocxParseArtifact(
+  output: Record<string, unknown> | null,
+  toolCallId: string,
+  toolName: string,
+  order: number,
+): ReqArtifactItem | null {
+  if (!output) return null;
+
+  const targetPath = normalizeString(output.path);
+  const headings = arrayOfStrings(output.headings);
+  const textContent = normalizeString(output.textContent);
+  const charCount = normalizeNumber(output.charCount);
+
+  if (!targetPath || !textContent) return null;
+
+  return {
+    id: `artifact:knowledge:${toolCallId}`,
+    kind: "knowledge",
+    icon: "◎",
+    label: "模板结构",
+    summary: fileNameFromPath(targetPath),
+    meta: charCount !== null
+      ? `${formatCount(charCount)} chars · ${headings.length} headings`
+      : `${headings.length} headings`,
+    markdown: [
+      `# 模板结构: ${fileNameFromPath(targetPath)}`,
+      "",
+      headings.length > 0 ? "## 章节标题" : "",
+      ...headings.map((h) => `- ${h}`),
+      "",
+      "## 文本内容预览",
+      "",
+      textContent.slice(0, 3000),
+    ].join("\n"),
+    exportName: `${fileNameFromPath(targetPath).replace(/\.docx$/i, "")}-structure.md`,
     toolName,
     order,
   };

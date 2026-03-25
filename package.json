@@ -21,6 +21,7 @@
     "better-sqlite3": "^11.8.1",
     "drizzle-orm": "^0.44.5",
     "execa": "^9.6.1",
+    "marked": "^17.0.5",
     "next": "^15.2.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

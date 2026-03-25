@@ -40,8 +40,20 @@ export function ReqArtifactsPanel({ items, pending, onClose }: ReqArtifactsPanel
   }
 
   function handleExport() {
-    if (!selected?.markdown) return;
+    if (!selected) return;
 
+    // Binary artifacts with a server download URL (e.g. .docx)
+    if (selected.downloadUrl) {
+      const link = document.createElement("a");
+      link.href = selected.downloadUrl;
+      link.download = selected.exportName;
+      link.click();
+      setFeedback("exported");
+      return;
+    }
+
+    // Fallback: export markdown as text file
+    if (!selected.markdown) return;
     const blob = new Blob([selected.markdown], { type: "text/markdown;charset=utf-8" });
     const href = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -85,7 +97,7 @@ export function ReqArtifactsPanel({ items, pending, onClose }: ReqArtifactsPanel
               复制
             </button>
             <button className={styles.actionButton} onClick={handleExport} type="button">
-              导出 Markdown
+              {selected?.downloadUrl ? "下载 DOCX" : "导出 Markdown"}
             </button>
           </div>
 

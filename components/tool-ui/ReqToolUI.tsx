@@ -243,53 +243,28 @@ export function ReqToolGroupPreview({
 }
 
 export function ReqToolCatalogPreview({ result }: { result: AvailableToolsResult }) {
-  const visibleGroups = result.groups.filter((group) => group.tools.length > 0);
+  const allTools = result.groups.flatMap((group) => group.tools);
 
-  if (visibleGroups.length === 0) {
-    return <p className={styles.catalogEmpty}>当前没有可展示的工具分组。</p>;
+  if (allTools.length === 0) {
+    return <p className={styles.catalogEmpty}>当前没有可展示的工具。</p>;
   }
 
   return (
-    <div className={styles.catalog}>
-      {visibleGroups.map((group) => (
-        <section key={group.key} className={styles.catalogGroup}>
-          <div className={styles.catalogGroupHeader}>
-            <div className={styles.catalogGroupTitleWrap}>
-              <span className={styles.catalogEyebrow}>{group.title ?? toolCategoryLabels[group.key]}</span>
-              <h4 className={styles.catalogGroupTitle}>当前可直接调用的 {group.tools.length} 个工具</h4>
+    <div className={styles.catalogGrid}>
+      {allTools.map((tool) => {
+        const registryItem = getToolRegistryItem(tool.name);
+        return (
+          <div key={tool.name} className={styles.catalogTile}>
+            <span className={styles.catalogTileIcon}>
+              <ToolGlyph name={tool.name} registryItem={registryItem} className={styles.catalogTileGlyph} />
+            </span>
+            <div className={styles.catalogTileMeta}>
+              <span className={styles.catalogTileTitle}>{tool.title}</span>
+              <span className={styles.catalogTileHint}>{tool.usageHint}</span>
             </div>
-            <span className={styles.groupPill}>{group.tools.length} 项</span>
           </div>
-
-          <div className={styles.catalogFlow}>
-            {group.tools.map((tool) => {
-              const registryItem = getToolRegistryItem(tool.name);
-              return (
-                <article key={tool.name} className={styles.catalogSnippet}>
-                  <div className={styles.catalogSnippetHead}>
-                    <span className={styles.catalogSnippetIcon}>
-                      <ToolGlyph name={tool.name} registryItem={registryItem} />
-                    </span>
-                    <div className={styles.catalogSnippetBody}>
-                      <p className={styles.catalogSnippetLine}>
-                        可用工具 <span className={styles.catalogSnippetTitle}>{tool.title}</span>
-                        <span className={`${styles.catalogSnippetCode} ${styles.code}`}>{tool.name}</span>
-                      </p>
-                      <p className={styles.catalogSnippetText}>{tool.usageHint}</p>
-                    </div>
-                  </div>
-
-                  <div className={styles.catalogSnippetSignals}>
-                    <span className={styles.riskPill}>{toolRiskLabels[tool.riskLevel]}</span>
-                    {tool.preferredToBash ? <span className={styles.hintPill}>优先于 bash</span> : null}
-                    {tool.supportsApproval ? <span className={styles.approvalPill}>需要审批</span> : null}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -398,19 +373,7 @@ function ReqToolCatalogCall({
       <div className={joinClasses(styles.toolPanelShell, styles.toolPanelShellOpen)}>
         <div className={styles.toolPanelWrap}>
           <div className={styles.toolPanel}>
-            <p className={styles.panelIntro}>{registryItem?.description ?? "用对话里的高亮片段说明当前能调用什么。"}</p>
-            <div className={styles.body}>
-              <ReqToolCatalogPreview result={result} />
-            </div>
-
-            {formattedInput ? (
-              <div className={styles.rawPanel}>
-                <div className={styles.rawBlock}>
-                  <span className={styles.rawLabel}>Input</span>
-                  <pre className={styles.rawPre}>{formattedInput}</pre>
-                </div>
-              </div>
-            ) : null}
+            <ReqToolCatalogPreview result={result} />
           </div>
         </div>
       </div>

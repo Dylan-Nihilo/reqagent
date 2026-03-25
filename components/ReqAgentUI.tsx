@@ -16,6 +16,8 @@ import { ReqScrollToBottom } from "@/components/ReqScrollToBottom";
 import { useEffect, useState } from "react";
 import { ReqNavDrawer } from "@/components/ReqNavDrawer";
 import { ReqBrandMark } from "@/components/ReqBrandMark";
+import { ReqSkillLoadedChips } from "@/components/ReqSkillLoadedChips";
+import { ReqSkillSelector } from "@/components/ReqSkillSelector";
 import { userPartComponents, assistantPartComponents } from "@/lib/part-registry";
 import { ReqArtifactsPanel } from "@/components/ReqArtifactsPanel";
 import styles from "@/components/ReqAgentShell.module.css";
@@ -24,6 +26,7 @@ import {
   inferAgentActivityFromMessageParts,
   summarizeMessageParts,
 } from "@/lib/message-parts";
+import type { ReqAgentLoadedSkillMeta } from "@/lib/skills/types";
 import type { AgentActivity, ReqAgentMessageMeta } from "@/lib/types";
 import { useArtifacts } from "@/lib/use-artifacts";
 import { useIsMessageCancelled } from "@/lib/cancel-store";
@@ -43,13 +46,14 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
   const isEmpty = useThread((s) => s.messages.length === 0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   // Close history overlay when transitioning to thread view
   useEffect(() => {
     if (!isEmpty) setShowHistory(false);
   }, [isEmpty]);
   const [artifactsCollapsed, setArtifactsCollapsed] = useState(false);
-  const artifacts = useArtifacts();
+  const artifacts = useArtifacts(workspaceId);
   const hasArtifacts = artifacts.items.length > 0 || Boolean(artifacts.pending);
   const showArtifactsPanel = hasArtifacts && !artifactsCollapsed;
   const artifactCount = artifacts.items.length + (artifacts.pending ? 1 : 0);
@@ -83,7 +87,10 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
           <div className={styles.cornerTR}>
             <button
               className={styles.ghostBtn}
-              onClick={() => setShowHistory(true)}
+              onClick={() => {
+                setShowSettings(false);
+                setShowHistory(true);
+              }}
               type="button"
             >
               <HistoryIcon className={styles.ghostBtnIcon} />
@@ -93,7 +100,14 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
               <GalleryIcon className={styles.ghostBtnIcon} />
               Gallery
             </a>
-            <button className={styles.ghostBtn} type="button">
+            <button
+              className={styles.ghostBtn}
+              onClick={() => {
+                setShowHistory(false);
+                setShowSettings(true);
+              }}
+              type="button"
+            >
               <SettingsIcon className={styles.ghostBtnIcon} />
               设置
             </button>
@@ -187,7 +201,11 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
                   <GalleryIcon className={styles.ghostBtnIcon} />
                   Gallery
                 </a>
-                <button className={styles.ghostBtn} type="button">
+                <button
+                  className={styles.ghostBtn}
+                  onClick={() => setShowSettings(true)}
+                  type="button"
+                >
                   <SettingsIcon className={styles.ghostBtnIcon} />
                   设置
                 </button>
@@ -259,6 +277,12 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
           </div>
         </div>
       )}
+
+      <SettingsSheet
+        onClose={() => setShowSettings(false)}
+        open={showSettings}
+        workspaceId={workspaceId}
+      />
     </div>
   );
 }
@@ -308,6 +332,7 @@ function AssistantMessage() {
   const rawVisualStatus = resolveMessageVisualStatus(status, content);
   const visualStatus = isCancelled && rawVisualStatus === "complete" ? "cancelled" as const : rawVisualStatus;
   const pendingCopy = resolvePendingCopy(meta, content);
+  const loadedSkills = meta?.debug?.loadedSkills ?? [];
 
   return (
     <MessagePrimitive.Root>
@@ -317,6 +342,7 @@ function AssistantMessage() {
         signals={buildAssistantSignals({ timing })}
         status={visualStatus}
       >
+        <ReqSkillLoadedChips skills={loadedSkills} />
         {visualStatus === "pending" ? (
           <ReqStreamingIndicator
             label={pendingCopy.label}
@@ -430,6 +456,74 @@ function buildAssistantSignals({
   if (timing?.totalStreamTime) signals.push(`${(timing.totalStreamTime / 1000).toFixed(1)}s`);
   return signals.length > 0 ? signals : undefined;
 }
+
+// ---------------------------------------------------------------------------
+// Settings sheet (slide-out panel with skill selector)
+// ---------------------------------------------------------------------------
+
+function SettingsSheet({
+  onClose,
+  open,
+  workspaceId,
+}: {
+  onClose: () => void;
+  open: boolean;
+  workspaceId: string;
+}) {
+  return (
+    <div
+      className={[
+        styles.settingsOverlay,
+        open ? styles.settingsOverlayOpen : "",
+      ].join(" ").trim()}
+    >
+      <div
+        className={styles.settingsBackdrop}
+        onClick={onClose}
+        role="presentation"
+      />
+      <aside className={styles.settingsPanel}>
+        <div className={styles.settingsPanelHead}>
+          <div className={styles.settingsPanelCopy}>
+            <p className={styles.settingsEyebrow}>Workspace Settings</p>
+            <h2 className={styles.settingsTitle}>Skill 配置</h2>
+            <p className={styles.settingsLead}>
+              当前所有可用 skill 会自动加载到每次对话中。
+            </p>
+          </div>
+          <button
+            className={styles.settingsClose}
+            onClick={onClose}
+            type="button"
+          >
+            关闭
+          </button>
+        </div>
+
+        <div className={styles.settingsMeta}>
+          <span className={styles.settingsPill}>workspace</span>
+          <code className={styles.settingsCode}>{workspaceId}</code>
+        </div>
+
+        <div className={styles.settingsSection}>
+          <ReqSkillSelector workspaceId={workspaceId} />
+        </div>
+
+        <div className={styles.settingsFootnote}>
+          <ReqSkillLoadedChips skills={sampleLoadedSkills} />
+          <p className={styles.settingsHint}>
+            loaded chips 会贴在 assistant turn 顶部，标示当前对话已加载的 skill。
+          </p>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+const sampleLoadedSkills: ReqAgentLoadedSkillMeta[] = [
+  { id: "req-prd-generic", name: "通用 PRD 模板", type: "knowledge" },
+  { id: "cap-mermaid", name: "Mermaid 图表", type: "capability" },
+];
 
 // SVG assets
 function HistoryIcon({ className }: { className?: string }) {

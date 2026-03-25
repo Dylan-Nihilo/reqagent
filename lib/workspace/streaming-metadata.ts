@@ -1,5 +1,6 @@
 import type { ProviderInfo } from "@/lib/ai-provider";
 import type { ReqAgentMcpServerStatus } from "@/lib/mcp";
+import type { ReqAgentLoadedSkillMeta } from "@/lib/skills/types";
 import type { ToolInvocationViewState } from "@/lib/types";
 import type { RuntimeContext } from "@/lib/workspace/context";
 import { summarizeForDebug } from "@/lib/workspace/context";
@@ -33,6 +34,8 @@ export function buildMetadataHandler(params: {
   mcpServers: ReqAgentMcpServerStatus[];
   providerInfo: ProviderInfo;
   toolInvocationStates: Record<string, ToolInvocationViewState>;
+  /** Skills matched for this message — determined before streaming starts. */
+  matchedSkills?: ReqAgentLoadedSkillMeta[];
 }) {
   const debugEvents: DebugEvent[] = [];
   const debugSteps: DebugStep[] = [];
@@ -74,6 +77,15 @@ export function buildMetadataHandler(params: {
       debugEvents.push(event);
       if (debugEvents.length > 48) debugEvents.shift();
 
+      // Only attach full debug arrays on milestone events to avoid
+      // sending hundreds of KB on every text-delta chunk.
+      const isMilestone =
+        chunk.type === "start" ||
+        chunk.type === "finish" ||
+        chunk.type === "start-step" ||
+        chunk.type === "finish-step" ||
+        chunk.type.startsWith("tool-");
+
       const basePayload = {
         activeRole: null,
         debug: {
@@ -82,10 +94,11 @@ export function buildMetadataHandler(params: {
           workspaceId: params.runtimeContext.workspaceId,
           workspaceKey: params.runtimeContext.workspaceKey,
           workspaceDir: params.runtimeContext.workspaceDir,
-          mcpServers: params.mcpServers,
+          loadedSkills: params.matchedSkills?.length ? params.matchedSkills : undefined,
+          mcpServers: isMilestone ? params.mcpServers : undefined,
           lastEvent: event,
-          events: [...debugEvents],
-          steps: [...debugSteps],
+          events: isMilestone ? [...debugEvents] : undefined,
+          steps: isMilestone ? [...debugSteps] : undefined,
         },
         model: params.providerInfo.model,
         publicThinking: "",
@@ -130,26 +143,18 @@ export function buildMetadataHandler(params: {
         case "text-delta":
           return {
             custom: {
-              model: params.providerInfo.model,
-              wireApi: params.providerInfo.wireApi,
-              activeRole: null,
+              ...basePayload,
               agentActivity: "responding" as const,
               phaseLabel: "生成回复",
-              publicThinking: "",
-              toolInvocationStates: { ...params.toolInvocationStates },
             },
           };
         case "reasoning-start":
         case "reasoning-delta":
           return {
             custom: {
-              model: params.providerInfo.model,
-              wireApi: params.providerInfo.wireApi,
-              activeRole: null,
+              ...basePayload,
               agentActivity: "thinking" as const,
               phaseLabel: "推理",
-              publicThinking: "",
-              toolInvocationStates: { ...params.toolInvocationStates },
             },
           };
         default:

@@ -3,6 +3,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ReqMessage } from "@/components/ReqMessage";
+import { ReqSkillLoadedChips } from "@/components/ReqSkillLoadedChips";
+import { ReqSkillSelector } from "@/components/ReqSkillSelector";
 import {
   ReqMcpToolInvocationPreview,
   ReqToolCatalogPreview,
@@ -227,6 +229,51 @@ export function ReqToolStateGallery() {
               />
             </ReqToolGroupPreview>
           </ReqMessage>
+        </section>
+
+        <section className={styles.skillBand}>
+          <div className={styles.skillBandHead}>
+            <p className={styles.statusEyebrow}>Skill Surface</p>
+            <p className={styles.inlineBandCopy}>
+              skills 进入请求体和系统提示，但前端表现应保持克制。对话里只露出轻量 loaded chips，配置动作放在设置面板。
+            </p>
+          </div>
+
+          <div className={styles.skillPreviewGrid}>
+            <article className={styles.skillPanel}>
+              <p className={styles.rosterLabel}>Loaded Skills</p>
+              <ReqMessage
+                meta="gpt-4o-mini"
+                role="assistant"
+                signals={["2 skills"]}
+                status="complete"
+                title="ReqAgent"
+              >
+                <ReqSkillLoadedChips
+                  skills={[
+                    {
+                      id: "req-prd-generic",
+                      name: "通用 PRD 模板",
+                      type: "knowledge",
+                    },
+                    {
+                      id: "cap-mermaid",
+                      name: "Mermaid 图表",
+                      type: "capability",
+                    },
+                  ]}
+                />
+                <p className={styles.skillMessageNote}>
+                  chips 应该贴着 assistant turn 顶部出现，只说明这一轮上下文额外装载了什么。
+                </p>
+              </ReqMessage>
+            </article>
+
+            <article className={styles.skillPanel}>
+              <p className={styles.rosterLabel}>Selector Preview</p>
+              <ReqSkillSelector workspaceId="gallery-preview" />
+            </article>
+          </div>
         </section>
 
         <nav className={styles.directory}>
