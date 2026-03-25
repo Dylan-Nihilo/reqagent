@@ -1,6 +1,7 @@
 "use client";
 
 import { useComposerRuntime } from "@assistant-ui/react";
+import { ReqBrandMark } from "@/components/ReqBrandMark";
 import { ReqComposer } from "@/components/ReqComposer";
 import styles from "@/components/ReqLanding.module.css";
 
@@ -19,7 +20,7 @@ export function ReqLanding() {
       <div className={styles.cornerTL}>
         <a className={styles.logo} href="/">
           <div className={styles.logoMark}>
-            <ReqLogoSvg />
+            <ReqBrandMark className={styles.logoMarkSvg} />
           </div>
           <div>
             <div className={styles.logoText}>ReqAgent</div>
@@ -107,36 +108,6 @@ function ReqSuggestionChips() {
 }
 
 // === SVG assets ===
-
-function ReqLogoSvg() {
-  return (
-    <svg
-      fill="none"
-      height="18"
-      viewBox="0 0 18 18"
-      width="18"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      {/* Stylised R: vertical stem + bowl + leg */}
-      <rect fill="white" height="14" rx="1" width="2.5" x="3" y="2" />
-      <path
-        d="M5.5 2h4a3.5 3.5 0 0 1 0 7h-4"
-        fill="none"
-        stroke="white"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2.5"
-      />
-      <path
-        d="M7.5 9l4.5 7"
-        fill="none"
-        stroke="white"
-        strokeLinecap="round"
-        strokeWidth="2.5"
-      />
-    </svg>
-  );
-}
 
 function GalleryIcon({ className }: { className?: string }) {
   return (

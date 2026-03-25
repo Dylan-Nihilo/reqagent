@@ -76,6 +76,11 @@
   mask-repeat: no-repeat;
 }
 
+.logoMarkSvg {
+  width: 18px;
+  height: 18px;
+}
+
 .logoText {
   font-size: 15px;
   font-weight: 600;

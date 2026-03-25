@@ -15,6 +15,7 @@ import { ReqStreamingIndicator } from "@/components/ReqStreamingIndicator";
 import { ReqScrollToBottom } from "@/components/ReqScrollToBottom";
 import { useEffect, useState } from "react";
 import { ReqNavDrawer } from "@/components/ReqNavDrawer";
+import { ReqBrandMark } from "@/components/ReqBrandMark";
 import { userPartComponents, assistantPartComponents } from "@/lib/part-registry";
 import { ReqArtifactsPanel } from "@/components/ReqArtifactsPanel";
 import styles from "@/components/ReqAgentShell.module.css";
@@ -34,9 +35,19 @@ const SUGGESTIONS = [
   "查看工作区文件",
 ];
 
-export function ReqAgentUI() {
+type ReqAgentUIProps = {
+  workspaceId: string;
+};
+
+export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
   const isEmpty = useThread((s) => s.messages.length === 0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+
+  // Close history overlay when transitioning to thread view
+  useEffect(() => {
+    if (!isEmpty) setShowHistory(false);
+  }, [isEmpty]);
   const [artifactsCollapsed, setArtifactsCollapsed] = useState(false);
   const artifacts = useArtifacts();
   const hasArtifacts = artifacts.items.length > 0 || Boolean(artifacts.pending);
@@ -63,13 +74,21 @@ export function ReqAgentUI() {
           <div className={styles.cornerTL}>
             <a className={styles.logo} href="/">
               <div className={styles.logoMark}>
-                <ReqLogoSvg />
+                <ReqBrandMark className={styles.logoMarkSvg} />
               </div>
               <span className={styles.logoText}>ReqAgent</span>
             </a>
           </div>
 
           <div className={styles.cornerTR}>
+            <button
+              className={styles.ghostBtn}
+              onClick={() => setShowHistory(true)}
+              type="button"
+            >
+              <HistoryIcon className={styles.ghostBtnIcon} />
+              历史对话
+            </button>
             <a className={styles.ghostBtn} href="/gallery">
               <GalleryIcon className={styles.ghostBtnIcon} />
               Gallery
@@ -109,6 +128,28 @@ export function ReqAgentUI() {
               <ReqSuggestionChips />
               <div className={styles.landingRule} />
             </div>
+          </div>
+
+          <div
+            className={[
+              styles.landingOverlay,
+              showHistory ? styles.landingOverlayOpen : "",
+            ].join(" ").trim()}
+          >
+            <div className={styles.landingSidebar}>
+              <ReqNavDrawer
+                collapsed={false}
+                currentAgent="ReqAgent"
+                hint="选择历史对话继续"
+                threadTitle="新对话"
+                workspaceId={workspaceId}
+              />
+            </div>
+            <div
+              className={styles.landingBackdrop}
+              onClick={() => setShowHistory(false)}
+              role="presentation"
+            />
           </div>
         </>
       ) : (
@@ -162,6 +203,7 @@ export function ReqAgentUI() {
                 hint="输入新消息开始对话"
                 onToggle={() => setSidebarCollapsed((v) => !v)}
                 threadTitle="当前会话"
+                workspaceId={workspaceId}
               />
             </aside>
             <div className={styles.threadMain}>
@@ -390,12 +432,12 @@ function buildAssistantSignals({
 }
 
 // SVG assets
-function ReqLogoSvg() {
+function HistoryIcon({ className }: { className?: string }) {
   return (
-    <svg fill="none" height="18" viewBox="0 0 18 18" width="18" xmlns="http://www.w3.org/2000/svg">
-      <rect fill="white" height="14" rx="1" width="2.5" x="3" y="2" />
-      <path d="M5.5 2h4a3.5 3.5 0 0 1 0 7h-4" fill="none" stroke="white" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />
-      <path d="M7.5 9l4.5 7" fill="none" stroke="white" strokeLinecap="round" strokeWidth="2.5" />
+    <svg className={className} fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 16 16">
+      <circle cx="8" cy="8.5" r="5.5" />
+      <path d="M8 5.5v3l2 1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.5 3V5.5H5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
