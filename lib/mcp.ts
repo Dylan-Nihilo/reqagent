@@ -166,19 +166,21 @@ async function loadMcpConfig(runtimeValues: Record<string, string | undefined>):
 }
 
 function sanitizeSegment(value: string) {
+  // OpenAI function names must match ^[a-zA-Z0-9_-]+$ — dots are NOT allowed
   return value
     .trim()
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
     .replace(/^-+|-+$/g, "") || "server";
 }
 
 function getToolPrefix(server: McpServerConfig) {
   const configuredPrefix = server.toolPrefix?.trim();
   if (configuredPrefix) {
-    return configuredPrefix.replace(/\.+/g, ".").replace(/^\.+|\.+$/g, "") || `mcp.${sanitizeSegment(server.id)}`;
+    // Replace dots with underscores for OpenAI compatibility
+    return sanitizeSegment(configuredPrefix) || `mcp_${sanitizeSegment(server.id)}`;
   }
 
-  return `mcp.${sanitizeSegment(server.id)}`;
+  return `mcp_${sanitizeSegment(server.id)}`;
 }
 
 function getExecutionMode(server: McpServerConfig): "proxy" | "native" {
@@ -190,6 +192,18 @@ function getExecutionMode(server: McpServerConfig): "proxy" | "native" {
   }
 
   return "proxy";
+}
+
+function trimToolDefinitions(definitions: ListToolsResult, maxDescLen = 120): ListToolsResult {
+  return {
+    ...definitions,
+    tools: definitions.tools.map((t) => ({
+      ...t,
+      description: t.description && t.description.length > maxDescLen
+        ? t.description.slice(0, maxDescLen) + "…"
+        : t.description,
+    })),
+  };
 }
 
 function filterToolDefinitions(definitions: ListToolsResult, server: McpServerConfig) {
@@ -225,6 +239,18 @@ async function listAllTools(client: MCPClient): Promise<ListToolsResult> {
   return {
     tools,
   };
+}
+
+function validateStdioArgs(server: McpServerConfig) {
+  if (server.transport.type !== "stdio") return;
+  const args = server.transport.args ?? [];
+  const emptyArg = args.find((a) => a.trim() === "");
+  if (emptyArg !== undefined) {
+    throw new Error(
+      `MCP server "${server.id}" has an empty arg after interpolation — ` +
+        `check that all \$\{VAR\} placeholders are resolved (got: ${JSON.stringify(args)})`,
+    );
+  }
 }
 
 function buildClientTransport(server: McpServerConfig) {
@@ -343,9 +369,14 @@ export async function buildMcpRuntime(context: ReqAgentMcpRuntimeContext = {}): 
     let client: MCPClient | null = null;
 
     try {
-      client = await createMCPClient({
-        transport: buildClientTransport(server),
-      });
+      validateStdioArgs(server);
+      const transport = buildClientTransport(server);
+      client = await Promise.race([
+        createMCPClient({ transport }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`MCP server "${server.id}" connect timeout (8s)`)), 8_000),
+        ),
+      ]);
 
       const definitions = filterToolDefinitions(await listAllTools(client), server);
       const toolNames = definitions.tools.map((tool) => tool.name);
@@ -382,15 +413,36 @@ export async function buildMcpRuntime(context: ReqAgentMcpRuntimeContext = {}): 
         continue;
       }
 
-      const proxiedTools = client.toolsFromDefinitions(definitions);
+      const trimmedDefinitions = trimToolDefinitions(definitions);
+      const proxiedTools = client.toolsFromDefinitions(trimmedDefinitions);
       const prefix = getToolPrefix(server);
+      const registeredToolNames: string[] = [];
 
       for (const definition of definitions.tools) {
         const proxiedTool = proxiedTools[definition.name];
         if (!proxiedTool) continue;
 
-        const toolName = `${prefix}.${sanitizeSegment(definition.name)}`;
-        tools[toolName] = proxiedTool;
+        const toolName = `${prefix}_${sanitizeSegment(definition.name)}`;
+        // Wrap execute to auto-resolve relative paths to absolute workspace paths.
+        // MCP filesystem server requires absolute paths; this lets the model use relative ones.
+        const workspaceDir = context.workspaceDir;
+        const toolObj = proxiedTool as Record<string, unknown>;
+        if (workspaceDir && typeof toolObj.execute === "function") {
+          const originalExecute = toolObj.execute as (...args: unknown[]) => Promise<unknown>;
+          tools[toolName] = {
+            ...toolObj,
+            execute: async (args: Record<string, unknown>, ...rest: unknown[]) => {
+              const resolved = { ...args };
+              if (typeof resolved.path === "string" && !path.isAbsolute(resolved.path)) {
+                resolved.path = path.join(workspaceDir, resolved.path);
+              }
+              return originalExecute(resolved, ...rest);
+            },
+          };
+        } else {
+          tools[toolName] = proxiedTool;
+        }
+        registeredToolNames.push(toolName);
         registryItems.push(
           buildRegistryItem({
             name: toolName,
@@ -409,8 +461,8 @@ export async function buildMcpRuntime(context: ReqAgentMcpRuntimeContext = {}): 
       servers.push({
         ...statusBase,
         state: "ready",
-        toolCount: toolNames.length,
-        toolNames,
+        toolCount: registeredToolNames.length,
+        toolNames: registeredToolNames,
       });
     } catch (error) {
       if (client) {
