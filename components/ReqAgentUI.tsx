@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuiState } from "@assistant-ui/store";
 import {
   MessagePrimitive,
   ThreadPrimitive,
@@ -13,7 +14,7 @@ import { ReqComposer } from "@/components/ReqComposer";
 import { ReqMessage } from "@/components/ReqMessage";
 import { ReqStreamingIndicator } from "@/components/ReqStreamingIndicator";
 import { ReqScrollToBottom } from "@/components/ReqScrollToBottom";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ReqNavDrawer } from "@/components/ReqNavDrawer";
 import { ReqBrandMark } from "@/components/ReqBrandMark";
 import { ReqSkillLoadedChips } from "@/components/ReqSkillLoadedChips";
@@ -43,15 +44,30 @@ type ReqAgentUIProps = {
 };
 
 export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
-  const isEmpty = useThread((s) => s.messages.length === 0);
+  const messageCount = useThread((s) => s.messages.length);
+  const remoteId = useAuiState((state) => state.threadListItem.remoteId);
+  const [viewMode, setViewMode] = useState<"landing" | "thread">("landing");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const isThreadView = viewMode === "thread";
 
-  // Close history overlay when transitioning to thread view
   useEffect(() => {
-    if (!isEmpty) setShowHistory(false);
-  }, [isEmpty]);
+    if (messageCount > 0 || remoteId) {
+      setViewMode("thread");
+    }
+  }, [messageCount, remoteId]);
+
+  useEffect(() => {
+    if (isThreadView) {
+      setShowHistory(false);
+    }
+  }, [isThreadView]);
+
+  const handleEnterThread = useCallback(() => {
+    setViewMode("thread");
+  }, []);
+
   const [artifactsCollapsed, setArtifactsCollapsed] = useState(false);
   const artifacts = useArtifacts(workspaceId);
   const hasArtifacts = artifacts.items.length > 0 || Boolean(artifacts.pending);
@@ -68,12 +84,12 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
     <div
       className={[
         styles.shell,
-        isEmpty ? "" : styles.shellThread,
-        !isEmpty && showArtifactsPanel ? styles.shellWithPanel : "",
-        !isEmpty && sidebarCollapsed ? styles.shellSidebarCollapsed : "",
+        isThreadView ? styles.shellThread : "",
+        isThreadView && showArtifactsPanel ? styles.shellWithPanel : "",
+        isThreadView && sidebarCollapsed ? styles.shellSidebarCollapsed : "",
       ].join(" ").trim()}
     >
-      {isEmpty ? (
+      {!isThreadView ? (
         <>
           <div className={styles.cornerTL}>
             <a className={styles.logo} href="/">
@@ -155,6 +171,8 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
                 collapsed={false}
                 currentAgent="ReqAgent"
                 hint="选择历史对话继续"
+                onNewThread={handleEnterThread}
+                onSwitchThread={handleEnterThread}
                 threadTitle="新对话"
                 workspaceId={workspaceId}
               />
@@ -219,7 +237,9 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
                 collapsed={sidebarCollapsed}
                 currentAgent="ReqAgent"
                 hint="输入新消息开始对话"
+                onNewThread={handleEnterThread}
                 onToggle={() => setSidebarCollapsed((v) => !v)}
+                onSwitchThread={handleEnterThread}
                 threadTitle="当前会话"
                 workspaceId={workspaceId}
               />

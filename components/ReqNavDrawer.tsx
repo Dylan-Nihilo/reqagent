@@ -14,6 +14,8 @@ type ReqNavDrawerProps = {
   workspaceId?: string;
   collapsed?: boolean;
   onToggle?: () => void;
+  onNewThread?: () => void;
+  onSwitchThread?: () => void;
 };
 
 function CollapseExpandIcon({ expanded = false }: { expanded?: boolean }) {
@@ -120,6 +122,8 @@ function ReqNavDrawerRuntime({
   hint,
   workspaceId,
   collapsed = false,
+  onNewThread,
+  onSwitchThread,
 }: ReqNavDrawerProps & { workspaceId: string }) {
   const aui = useAui();
   const [threads, setThreads] = useState<ReqAgentThreadRecord[]>([]);
@@ -127,7 +131,6 @@ function ReqNavDrawerRuntime({
   const activeRemoteId = useAuiState((state) => state.threadListItem.remoteId);
   const activeTitle = useAuiState((state) => state.threadListItem.title);
   const messageCount = useThread((state) => state.messages.length);
-  const isRunning = useThread((state) => state.isRunning);
 
   const loadThreads = useCallback(async () => {
     setLoading(true);
@@ -141,25 +144,27 @@ function ReqNavDrawerRuntime({
   }, [workspaceId]);
 
   useEffect(() => {
-    if (isRunning) return;
     void loadThreads();
-  }, [isRunning, loadThreads, messageCount, activeRemoteId]);
+  }, [loadThreads, messageCount, activeRemoteId]);
 
   const groups = useMemo(() => getThreadGroups(threads), [threads]);
-  const showDraftThread = !activeRemoteId && (messageCount > 0 || Boolean(activeTitle));
-  const resolvedThreadTitle = activeTitle ?? DEFAULT_THREAD_TITLE;
+  const showDraftThread = !activeRemoteId;
+  const resolvedThreadTitle = activeRemoteId
+    ? (activeTitle ?? DEFAULT_THREAD_TITLE)
+    : DEFAULT_THREAD_TITLE;
 
   const handleNewThread = useCallback(async () => {
     await aui.threads().switchToNewThread();
-    void loadThreads();
-  }, [aui, loadThreads]);
+    onNewThread?.();
+  }, [aui, onNewThread]);
 
   const handleSwitchThread = useCallback(
     async (id: string) => {
       await aui.threads().switchToThread(id);
+      onSwitchThread?.();
       void loadThreads();
     },
-    [aui, loadThreads],
+    [aui, loadThreads, onSwitchThread],
   );
 
   const handleDeleteThread = useCallback(
@@ -335,6 +340,8 @@ export function ReqNavDrawer({
   hint,
   workspaceId,
   collapsed = false,
+  onNewThread,
+  onSwitchThread,
 }: ReqNavDrawerProps) {
   if (workspaceId) {
     return (
@@ -342,6 +349,8 @@ export function ReqNavDrawer({
         collapsed={collapsed}
         currentAgent={currentAgent}
         hint={hint}
+        onNewThread={onNewThread}
+        onSwitchThread={onSwitchThread}
         threadTitle={threadTitle}
         workspaceId={workspaceId}
       />
