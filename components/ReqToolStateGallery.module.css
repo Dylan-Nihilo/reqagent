@@ -143,6 +143,44 @@
   margin-bottom: 18px;
 }
 
+.skillBand {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  margin-bottom: 18px;
+  border: 1px solid var(--reqagent-line);
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.skillBandHead {
+  display: grid;
+  gap: 4px;
+}
+
+.skillPreviewGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.88fr) minmax(320px, 1.12fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.skillPanel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--reqagent-line);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 248, 246, 0.92));
+}
+
+.skillMessageNote {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--reqagent-text-soft);
+}
+
 .inlineBandHead {
   display: grid;
   gap: 4px;
@@ -460,6 +498,7 @@
   .hero,
   .sectionChrome,
   .previewGrid,
+  .skillPreviewGrid,
   .directory,
   .statusRail {
     grid-template-columns: 1fr;
