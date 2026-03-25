@@ -6,11 +6,18 @@ import {
   jsonSchema,
   stepCountIs,
   convertToModelMessages,
+  type UIMessage,
 } from "ai";
-import { createBashTool } from "bash-tool";
+import { execa, ExecaError } from "execa";
 import { getProviderInfo, reqAgentModel } from "@/lib/ai-provider";
+import {
+  ensureThread,
+  getThreadWorkspaceId,
+  syncThreadUiMessages,
+} from "@/lib/db/store";
 import { buildMcpRuntime } from "@/lib/mcp";
 import { getAvailableToolsResult } from "@/lib/tool-registry";
+import { DEFAULT_WORKSPACE_ID } from "@/lib/threads";
 import type { ToolInvocationViewState } from "@/lib/types";
 
 export const maxDuration = 60;
@@ -66,17 +73,21 @@ function isPathInsideRoot(rootDir: string, candidatePath: string) {
 
 function resolveRuntimeContext(input: {
   workspaceId?: unknown;
+  threadId?: unknown;
+  localThreadId?: unknown;
   id?: unknown;
   messageId?: unknown;
   messages?: unknown;
 }) {
   const threadId =
+    readNonEmptyString(input.threadId) ||
+    readNonEmptyString(input.localThreadId) ||
     readNonEmptyString(input.id) ||
     readNonEmptyString(input.messageId) ||
     summarizeMessagesForFallback(input.messages) ||
     "chat";
   const threadKey = buildScopedKey(threadId);
-  const workspaceId = readNonEmptyString(input.workspaceId) || `legacy-thread-${threadKey}`;
+  const workspaceId = readNonEmptyString(input.workspaceId) || DEFAULT_WORKSPACE_ID;
   const workspaceKey = buildScopedKey(workspaceId);
   const workspaceDir = path.join(WORKSPACES_ROOT_DIR, workspaceKey);
 
@@ -117,6 +128,57 @@ function summarizeForDebug(value: unknown, maxLength = 220) {
     return json.length > maxLength ? `${json.slice(0, maxLength - 1)}…` : json;
   } catch {
     return String(value);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shell execution via execa — real shell, graceful timeout (SIGTERM → SIGKILL)
+// ---------------------------------------------------------------------------
+
+const SHELL_TIMEOUT_DEFAULT = 30_000;
+const SHELL_OUTPUT_MAX = 128 * 1024; // 128KB per stream
+
+function truncateOutput(value: string) {
+  if (value.length <= SHELL_OUTPUT_MAX) return { text: value, truncated: false };
+  return { text: value.slice(0, SHELL_OUTPUT_MAX) + "\n[...truncated]", truncated: true };
+}
+
+async function executeInWorkspace(
+  command: string,
+  cwd: string,
+  timeout = SHELL_TIMEOUT_DEFAULT,
+): Promise<{ stdout: string; stderr: string; exitCode: number; truncated?: boolean; timedOut?: boolean }> {
+  try {
+    const result = await execa({
+      shell: "/bin/bash",
+      cwd,
+      timeout: Math.min(timeout, 120_000),
+      reject: false,
+    })`${command}`;
+
+    const out = truncateOutput(result.stdout);
+    const err = truncateOutput(result.stderr);
+    return {
+      stdout: out.text,
+      stderr: err.text,
+      exitCode: result.exitCode ?? 0,
+      truncated: out.truncated || err.truncated || undefined,
+      timedOut: result.timedOut || undefined,
+    };
+  } catch (error: unknown) {
+    if (error instanceof ExecaError) {
+      return {
+        stdout: error.stdout ?? "",
+        stderr: error.stderr || (error.timedOut ? "Process timed out" : error.shortMessage),
+        exitCode: error.exitCode ?? 1,
+        timedOut: error.timedOut || undefined,
+      };
+    }
+    return {
+      stdout: "",
+      stderr: error instanceof Error ? error.message : String(error),
+      exitCode: 1,
+    };
   }
 }
 
@@ -170,38 +232,63 @@ const SYSTEM_PROMPT = `你是 ReqAgent，一个 AI 助手。用中文回复，�
 你有以下工具：
 
 结构化工具（优先使用）：
-- list_files: 查看工作区目录结构。首先使用这个了解项目布局。
-- search_workspace: 在工作区中搜索文本。找代码、找文档用这个。
+- list_files: 查看工作区目录结构（含 type/size/mtime）。首先使用这个了解项目布局。
+- search_workspace: 在工作区中搜索文本，支持 glob 过滤和上下文行。找代码、找文档用这个。
+- readFile: 读取文件内容，支持 offset/limit 分段读取大文件。
+- writeFile: 写入文件，支持 overwrite/append/patch 三种模式。patch 模式可以查找替换文件中的指定内容。
 - fetch_url: 抓取任意网页并返回 Markdown。用户分享链接、查竞品、查文档时调用。
-- list_available_tools: 返回结构化工具目录。当用户询问“你有哪些工具”时必须调用，不要自由文本罗列。
+- list_available_tools: 返回实际挂载的工具目录。当用户问”你能做什么”时调用。
 
-底层工具（bash-tool）：
-- bash: 执行 shell 命令。用于 ls、find、grep、cat、wc 等操作。
-- readFile: 读取文件完整内容。读取具体文件时用这个。
-- writeFile: 创建或更新文件。生成需求文档、用户故事时用这个。
+Shell 工具：
+- bash: 在工作区目录下执行任意 shell 命令。支持 python3、node、git、curl 等系统命令。复杂操作或需要系统工具时使用。
 
 动态外部工具：
-- MCP 工具：如果系统已经接入外部 MCP server，会自动出现在工具列表中。涉及第三方服务、远程知识库、浏览器自动化或外部 API 时优先调用，不要用 bash 伪造远程请求。
+- MCP 工具：如果系统已经接入外部 MCP server，会自动出现在工具列表中。
 
 工作原则：
 1. 了解项目 → 先 list_files，再针对性 readFile
-2. 搜索内容 → 用 search_workspace，不要用 bash grep
-3. 读写文件 → 用 readFile / writeFile
-4. 复杂操作 → 才用 bash（如 wc -l、find 复杂模式）
-5. 外部系统 → 优先用对应 MCP 工具，不要用 bash 手搓网络请求
-6. 总是先用结构化工具，bash 是最后手段`;
+2. 搜索内容 → 优先用 search_workspace（支持 glob 过滤）
+3. 读写文件 → 用 readFile / writeFile（小修改用 patch 模式）
+4. 系统命令 / 运行代码 → 用 bash（python3、node 等均可用）
+5. 外部系统 → 优先用对应 MCP 工具
+6. 总是先用结构化工具，bash 用于需要系统能力的场景`;
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { messages = [] } = body as { messages?: Awaited<ReturnType<typeof req.json>>["messages"] };
+  const uiMessages = Array.isArray((body as { messages?: unknown }).messages)
+    ? ((body as { messages?: UIMessage[] }).messages ?? [])
+    : [];
+  const requestedThreadId = readNonEmptyString((body as { threadId?: unknown }).threadId);
+  const persistedWorkspaceId = requestedThreadId
+    ? getThreadWorkspaceId(requestedThreadId)
+    : null;
   const providerInfo = getProviderInfo();
-  const { threadId, threadKey, workspaceId, workspaceKey, workspaceDir } = resolveRuntimeContext(body as {
-    workspaceId?: unknown;
-    id?: unknown;
-    messageId?: unknown;
-    messages?: unknown;
+  const { threadId, threadKey, workspaceId, workspaceKey, workspaceDir } = resolveRuntimeContext({
+    ...(body as {
+      workspaceId?: unknown;
+      threadId?: unknown;
+      localThreadId?: unknown;
+      id?: unknown;
+      messageId?: unknown;
+      messages?: unknown;
+    }),
+    workspaceId: readNonEmptyString((body as { workspaceId?: unknown }).workspaceId) ?? persistedWorkspaceId,
   });
-  await ensureWorkspaceDirectory(workspaceDir);
+  const persistedThread = ensureThread({
+    threadId,
+    workspaceId,
+  });
+  if (uiMessages.length > 0) {
+    syncThreadUiMessages(persistedThread.id, uiMessages);
+  }
+  const runtimeContext = {
+    threadId: persistedThread.id,
+    threadKey,
+    workspaceId: persistedThread.workspaceId,
+    workspaceKey,
+    workspaceDir,
+  };
+  await ensureWorkspaceDirectory(runtimeContext.workspaceDir);
   const toolInvocationStates: Record<string, ToolInvocationViewState> = {};
   const debugEvents: Array<{
     index: number;
@@ -220,143 +307,171 @@ export async function POST(req: Request) {
   let debugEventIndex = 0;
   let debugStepIndex = 0;
 
-  const { tools: bashTools } = await createBashTool({
-    uploadDirectory: { source: workspaceDir },
-  });
-
   const mcpRuntime = await buildMcpRuntime({
-    workspaceId,
-    workspaceKey,
-    workspaceDir,
-    threadId,
-    threadKey,
+    workspaceId: runtimeContext.workspaceId,
+    workspaceKey: runtimeContext.workspaceKey,
+    workspaceDir: runtimeContext.workspaceDir,
+    threadId: runtimeContext.threadId,
+    threadKey: runtimeContext.threadKey,
   });
   const availableToolsResult = getAvailableToolsResult(mcpRuntime.registryItems);
-
-  const protectedBashTool = {
-    ...bashTools.bash,
-    needsApproval: true,
-  };
 
   const workspaceTools = {
     list_files: tool({
       description:
-        "List files in the workspace directory tree. Returns structured file list. " +
+        "List files in the workspace directory tree with metadata (type, size, mtime). " +
         "Use this FIRST to understand the workspace layout before reading specific files.",
-      inputSchema: jsonSchema<{ dir?: string; maxDepth?: number }>({
+      inputSchema: jsonSchema<{ dir?: string; maxDepth?: number; limit?: number }>({
         type: "object",
         properties: {
           dir: { type: "string", description: "Subdirectory to list (default: workspace root)" },
           maxDepth: { type: "number", description: "Max directory depth (default: 3)" },
+          limit: { type: "number", description: "Max entries to return (default: 200)" },
         },
       }),
-      execute: async ({ dir, maxDepth }) => {
+      execute: async ({ dir, maxDepth, limit }) => {
         const { promises: fs } = await import("node:fs");
-        const targetDir = path.resolve(workspaceDir, dir || "");
-        if (!targetDir.startsWith(workspaceDir)) {
-          return { error: "Access denied: path outside workspace", root: dir, files: [], count: 0 };
+        const targetDir = path.resolve(runtimeContext.workspaceDir, dir || "");
+        if (!targetDir.startsWith(runtimeContext.workspaceDir)) {
+          return { error: "Access denied: path outside workspace", root: dir, entries: [], count: 0 };
         }
-        const results: string[] = [];
+        const maxEntries = Math.min(limit ?? 200, 500);
+        const entries: Array<{ path: string; type: "file" | "dir"; size?: number; mtime?: string }> = [];
         const IGNORED = new Set([".git", "node_modules", ".next", ".pnpm-store"]);
 
         async function walk(d: string, depth: number) {
-          if (depth > (maxDepth ?? 3)) return;
-          const entries = await fs.readdir(d, { withFileTypes: true }).catch(() => []);
-          for (const entry of entries) {
+          if (depth > (maxDepth ?? 3) || entries.length >= maxEntries) return;
+          const dirEntries = await fs.readdir(d, { withFileTypes: true }).catch(() => []);
+          for (const entry of dirEntries) {
+            if (entries.length >= maxEntries) break;
             if (IGNORED.has(entry.name)) continue;
-            const rel = path.relative(workspaceDir, path.join(d, entry.name));
+            const abs = path.join(d, entry.name);
+            const rel = path.relative(runtimeContext.workspaceDir, abs);
             if (entry.isDirectory()) {
-              results.push(rel + "/");
-              await walk(path.join(d, entry.name), depth + 1);
-            } else {
-              results.push(rel);
-            }
-          }
-        }
-
-        await walk(targetDir, 0);
-        return { root: dir || ".", files: results, count: results.length };
-      },
-    }),
-
-    search_workspace: tool({
-      description:
-        "Full-text search across workspace files. Returns matching lines with file paths and line numbers. " +
-        "Use this to find specific code, patterns, or content across the workspace.",
-      inputSchema: jsonSchema<{ query: string; limit?: number }>({
-        type: "object",
-        properties: {
-          query: { type: "string", description: "Text to search for" },
-          limit: { type: "number", description: "Max results (default: 8)" },
-        },
-        required: ["query"],
-      }),
-      execute: async ({ query, limit }) => {
-        const { promises: fs } = await import("node:fs");
-        const maxResults = limit ?? 8;
-        const IGNORED = new Set([".git", "node_modules", ".next"]);
-        const matches: Array<{ path: string; line?: number; excerpt: string }> = [];
-
-        const MAX_FILE_SIZE = 512 * 1024;
-        async function search(dir: string) {
-          if (matches.length >= maxResults) return;
-          const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
-          for (const entry of entries) {
-            if (matches.length >= maxResults) break;
-            if (IGNORED.has(entry.name)) continue;
-            const abs = path.join(dir, entry.name);
-            if (!abs.startsWith(workspaceDir)) continue;
-            if (entry.isDirectory()) {
-              await search(abs);
+              entries.push({ path: rel + "/", type: "dir" });
+              await walk(abs, depth + 1);
             } else {
               try {
                 const stat = await fs.stat(abs);
-                if (stat.size > MAX_FILE_SIZE) continue;
-                const content = await fs.readFile(abs, "utf8");
-                const lines = content.split("\n");
-                for (let i = 0; i < lines.length && matches.length < maxResults; i++) {
-                  if (lines[i].toLowerCase().includes(query.toLowerCase())) {
-                    matches.push({
-                      path: path.relative(workspaceDir, abs),
-                      line: i + 1,
-                      excerpt: lines[i].trim().slice(0, 200),
-                    });
-                  }
-                }
+                entries.push({ path: rel, type: "file", size: stat.size, mtime: new Date(stat.mtimeMs).toISOString() });
               } catch {
-                // Skip unreadable files.
+                entries.push({ path: rel, type: "file" });
               }
             }
           }
         }
 
-        await search(workspaceDir);
-        return { query, total: matches.length, matches };
+        await walk(targetDir, 0);
+        return { root: dir || ".", entries, count: entries.length, truncated: entries.length >= maxEntries };
+      },
+    }),
+
+    search_workspace: tool({
+      description:
+        "Full-text search across workspace files. Returns matching lines with surrounding context. " +
+        "Supports glob filtering (e.g. '*.py', '*.md').",
+      inputSchema: jsonSchema<{ query: string; limit?: number; contextLines?: number; glob?: string }>({
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Text to search for (case-insensitive)" },
+          limit: { type: "number", description: "Max results (default: 12)" },
+          contextLines: { type: "number", description: "Lines of context before/after each match (default: 1)" },
+          glob: { type: "string", description: "File extension filter, e.g. '*.md' or '*.py'" },
+        },
+        required: ["query"],
+      }),
+      execute: async ({ query, limit, contextLines, glob }) => {
+        const { promises: fs } = await import("node:fs");
+        const maxResults = Math.min(limit ?? 12, 30);
+        const ctx = Math.min(contextLines ?? 1, 5);
+        const ext = glob?.startsWith("*.") ? glob.slice(1) : null;
+        const IGNORED = new Set([".git", "node_modules", ".next"]);
+        const MAX_FILE_SIZE = 512 * 1024;
+        const matches: Array<{ path: string; line: number; match: string; context: string[] }> = [];
+        let totalMatches = 0;
+
+        async function search(dir: string) {
+          const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+          for (const entry of entries) {
+            if (IGNORED.has(entry.name)) continue;
+            const abs = path.join(dir, entry.name);
+            if (!abs.startsWith(runtimeContext.workspaceDir)) continue;
+            if (entry.isDirectory()) {
+              await search(abs);
+            } else {
+              if (ext && !entry.name.endsWith(ext)) continue;
+              try {
+                const stat = await fs.stat(abs);
+                if (stat.size > MAX_FILE_SIZE) continue;
+                const content = await fs.readFile(abs, "utf8");
+                const lines = content.split("\n");
+                const lowerQuery = query.toLowerCase();
+                for (let i = 0; i < lines.length; i++) {
+                  if (lines[i].toLowerCase().includes(lowerQuery)) {
+                    totalMatches++;
+                    if (matches.length < maxResults) {
+                      const start = Math.max(0, i - ctx);
+                      const end = Math.min(lines.length - 1, i + ctx);
+                      matches.push({
+                        path: path.relative(runtimeContext.workspaceDir, abs),
+                        line: i + 1,
+                        match: lines[i].trim().slice(0, 200),
+                        context: lines.slice(start, end + 1).map((l, idx) => {
+                          const n = start + idx + 1;
+                          return `${n === i + 1 ? ">" : " "}${String(n).padStart(4)}│ ${l}`;
+                        }),
+                      });
+                    }
+                  }
+                }
+              } catch {
+                // Skip unreadable files
+              }
+            }
+          }
+        }
+
+        await search(runtimeContext.workspaceDir);
+        return { query, found: matches.length, totalMatches, matches, truncated: totalMatches > matches.length };
       },
     }),
 
     readFile: tool({
-      description: "Read the contents of a file from the current thread workspace.",
-      inputSchema: jsonSchema<{ path: string }>({
+      description:
+        "Read file contents from the workspace. Supports line-based pagination for large files.",
+      inputSchema: jsonSchema<{ path: string; offset?: number; limit?: number }>({
         type: "object",
         properties: {
-          path: { type: "string", description: "Relative path to the file inside the workspace" },
+          path: { type: "string", description: "Relative path to the file" },
+          offset: { type: "number", description: "Start from this line number (1-based, default: 1)" },
+          limit: { type: "number", description: "Max lines to return (default: all, cap: 2000)" },
         },
         required: ["path"],
       }),
-      execute: async ({ path: targetPath }) => {
+      execute: async ({ path: targetPath, offset, limit }) => {
         const { promises: fs } = await import("node:fs");
-        const resolvedPath = resolveWorkspacePath(workspaceDir, targetPath);
-        if (!resolvedPath) {
+        const resolved = resolveWorkspacePath(runtimeContext.workspaceDir, targetPath);
+        if (!resolved) {
           return { error: "Access denied: path outside workspace", path: targetPath };
         }
 
         try {
-          const content = await fs.readFile(resolvedPath, "utf8");
+          const stat = await fs.stat(resolved);
+          const content = await fs.readFile(resolved, "utf8");
+          const lines = content.split("\n");
+          const totalLines = lines.length;
+          const startLine = Math.max(1, offset ?? 1);
+          const maxLines = Math.min(limit ?? totalLines, 2000);
+          const sliced = lines.slice(startLine - 1, startLine - 1 + maxLines);
+
           return {
-            path: path.relative(workspaceDir, resolvedPath),
-            content,
-            charCount: content.length,
+            path: path.relative(runtimeContext.workspaceDir, resolved),
+            content: sliced.join("\n"),
+            totalLines,
+            fromLine: startLine,
+            toLine: startLine + sliced.length - 1,
+            truncated: startLine > 1 || sliced.length < totalLines,
+            sizeBytes: stat.size,
           };
         } catch (error) {
           return {
@@ -370,30 +485,51 @@ export async function POST(req: Request) {
     writeFile: {
       ...tool({
         description:
-          "Create or overwrite a file in the current thread workspace. Use this for requirements docs and generated artifacts.",
-        inputSchema: jsonSchema<{ path: string; content: string }>({
+          "Write content to a file in the workspace. Modes: overwrite (default), append, patch (find-and-replace `match` with `content`).",
+        inputSchema: jsonSchema<{ path: string; content: string; mode?: string; match?: string }>({
           type: "object",
           properties: {
-            path: { type: "string", description: "Relative path to the file inside the workspace" },
-            content: { type: "string", description: "Full file contents to write" },
+            path: { type: "string", description: "Relative path to the file" },
+            content: { type: "string", description: "Content to write, or replacement text in patch mode" },
+            mode: { type: "string", enum: ["overwrite", "append", "patch"], description: "Write mode (default: overwrite)" },
+            match: { type: "string", description: "Text to find and replace (required for patch mode)" },
           },
           required: ["path", "content"],
         }),
-        execute: async ({ path: targetPath, content }) => {
+        execute: async ({ path: targetPath, content, mode, match }) => {
           const { promises: fs } = await import("node:fs");
-          const resolvedPath = resolveWorkspacePath(workspaceDir, targetPath);
-          if (!resolvedPath) {
+          const resolved = resolveWorkspacePath(runtimeContext.workspaceDir, targetPath);
+          if (!resolved) {
             return { error: "Access denied: path outside workspace", path: targetPath };
           }
 
-          await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
-          await fs.writeFile(resolvedPath, content, "utf8");
+          await fs.mkdir(path.dirname(resolved), { recursive: true });
+          const effectiveMode = mode ?? "overwrite";
 
+          if (effectiveMode === "patch") {
+            if (!match) return { error: "patch mode requires the `match` parameter", path: targetPath };
+            let existing: string;
+            try {
+              existing = await fs.readFile(resolved, "utf8");
+            } catch {
+              return { error: "File does not exist — cannot patch", path: targetPath };
+            }
+            if (!existing.includes(match)) {
+              return { error: "match text not found in file", path: targetPath, matchPreview: match.slice(0, 120) };
+            }
+            await fs.writeFile(resolved, existing.replace(match, content), "utf8");
+          } else if (effectiveMode === "append") {
+            await fs.appendFile(resolved, content, "utf8");
+          } else {
+            await fs.writeFile(resolved, content, "utf8");
+          }
+
+          const stat = await fs.stat(resolved);
           return {
             success: true,
-            path: path.relative(workspaceDir, resolvedPath),
-            charCount: content.length,
-            persisted: true,
+            path: path.relative(runtimeContext.workspaceDir, resolved),
+            mode: effectiveMode,
+            sizeBytes: stat.size,
           };
         },
       }),
@@ -406,14 +542,45 @@ export async function POST(req: Request) {
   const allTools = {
     ...workspaceTools,
     ...mcpRuntime.tools,
-    bash: protectedBashTool,
+    bash: {
+      ...tool({
+        description:
+          "Execute a shell command in the workspace directory. Has full access to system commands (python3, node, git, curl, etc). " +
+          "Working directory is the workspace root.",
+        inputSchema: jsonSchema<{ command: string; timeout?: number }>({
+          type: "object",
+          properties: {
+            command: { type: "string", description: "Shell command to execute" },
+            timeout: { type: "number", description: "Timeout in ms (default: 30000, max: 120000)" },
+          },
+          required: ["command"],
+        }),
+        execute: async ({ command, timeout }) => {
+          return executeInWorkspace(command, runtimeContext.workspaceDir, timeout);
+        },
+      }),
+      needsApproval: true,
+    },
     list_available_tools: tool({
-      description: "Return the list of currently available tools. Call when the user asks what you can do or what tools are available.",
+      description: "Return the list of currently available tools. Call when the user asks what you can do.",
       inputSchema: jsonSchema<Record<string, never>>({
         type: "object",
         properties: {},
       }),
-      execute: async () => availableToolsResult,
+      execute: async () => {
+        const mountedNames = [
+          ...Object.keys(workspaceTools),
+          ...Object.keys(mcpRuntime.tools),
+          "bash",
+          "list_available_tools",
+        ];
+        return {
+          ...availableToolsResult,
+          mountedToolNames: mountedNames,
+          total: mountedNames.length,
+          summary: `当前共 ${mountedNames.length} 个可用工具`,
+        };
+      },
     }),
   };
 
@@ -423,14 +590,14 @@ export async function POST(req: Request) {
     model: reqAgentModel,
     system:
       `${SYSTEM_PROMPT}\n\n` +
-      `当前会话 thread_id: ${threadId}\n` +
-      `当前会话 thread_key: ${threadKey}\n` +
-      `当前工作区目录: ${workspaceDir}\n` +
+      `当前会话 thread_id: ${runtimeContext.threadId}\n` +
+      `当前会话 thread_key: ${runtimeContext.threadKey}\n` +
+      `当前工作区目录: ${runtimeContext.workspaceDir}\n` +
       `${mcpRuntime.promptSection}\n` +
       "需求文档默认写入 docs/requirements.md。\n" +
       "不要使用 bash 创建、覆盖或移动文档文件；文件读写一律使用 readFile / writeFile 或已接入的文件系统工具。\n" +
       "所有文件操作都以当前项目工作区为根目录，不要依赖其他项目或其他会话留下的文件。",
-    messages: await convertToModelMessages(messages),
+    messages: await convertToModelMessages(uiMessages),
     tools: allTools,
     stopWhen: stepCountIs(8),
     providerOptions: {
@@ -471,6 +638,10 @@ export async function POST(req: Request) {
   }
 
   return result.toUIMessageStreamResponse({
+    originalMessages: uiMessages,
+    onFinish: async ({ messages: finalMessages }) => {
+      syncThreadUiMessages(runtimeContext.threadId, finalMessages);
+    },
     sendReasoning: true,
     messageMetadata: ({ part }) => {
       const chunk = part as {
@@ -494,11 +665,11 @@ export async function POST(req: Request) {
       const basePayload = {
         activeRole: null,
         debug: {
-          threadId,
-          threadKey,
-          workspaceId,
-          workspaceKey,
-          workspaceDir,
+          threadId: runtimeContext.threadId,
+          threadKey: runtimeContext.threadKey,
+          workspaceId: runtimeContext.workspaceId,
+          workspaceKey: runtimeContext.workspaceKey,
+          workspaceDir: runtimeContext.workspaceDir,
           mcpServers: mcpRuntime.servers,
           lastEvent: event,
           events: [...debugEvents],
