@@ -222,7 +222,7 @@
 
 .directory {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   padding: 12px;
   margin-bottom: 22px;
@@ -305,6 +305,12 @@
   --section-accent: #6d4252;
   --section-soft: rgba(109, 66, 82, 0.06);
   --section-line: rgba(109, 66, 82, 0.16);
+}
+
+.sectionMcp {
+  --section-accent: #3b5f73;
+  --section-soft: rgba(59, 95, 115, 0.06);
+  --section-line: rgba(59, 95, 115, 0.16);
 }
 
 .sectionChrome {

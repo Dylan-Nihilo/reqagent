@@ -1,6 +1,7 @@
 import type { UIMessage } from "ai";
 import { z } from "zod";
 import type { ReqAgentProviderInfo } from "@/lib/ai-provider";
+import type { ReqAgentMcpServerStatus } from "@/lib/mcp";
 
 export type StoryPriority = "must" | "should" | "could";
 
@@ -292,6 +293,7 @@ export type ReqAgentDebugMeta = {
   workspaceId?: string;
   workspaceKey?: string;
   workspaceDir?: string;
+  mcpServers?: ReqAgentMcpServerStatus[];
   lastEvent?: ReqAgentDebugEvent;
   events?: ReqAgentDebugEvent[];
   steps?: ReqAgentDebugStep[];

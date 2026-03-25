@@ -21,6 +21,8 @@ import {
   toolCategoryLabels,
   toolRiskLabels,
   type AvailableToolsResult,
+  type ToolCategory,
+  type ToolRiskLevel,
   type ToolRegistryItem,
 } from "@/lib/tool-registry";
 import {
@@ -124,12 +126,13 @@ export function ReqToolPart(props: ToolCallMessagePartProps) {
     status: props.status,
     toolCallId: props.toolCallId,
   });
+  const catalogResult = normalizeAvailableToolsResult(props.result);
 
-  if (isAvailableToolsResult(props.result)) {
+  if (props.toolName === "list_available_tools" && catalogResult) {
     return (
       <ReqToolCatalogCall
         name={props.toolName}
-        result={props.result}
+        result={catalogResult}
         rawInput={props.args}
         state={viewState}
         title={registryItem?.title}
@@ -139,6 +142,10 @@ export function ReqToolPart(props: ToolCallMessagePartProps) {
 
   if (props.toolName === "bash") {
     return <ReqBashToolPart registryItem={registryItem} state={viewState} {...props} />;
+  }
+
+  if (isMcpToolInvocation(props.toolName, registryItem, meta)) {
+    return <ReqMcpToolPart meta={meta} registryItem={registryItem} state={viewState} {...props} />;
   }
 
   const metrics = extractStructuredMetrics(props.result);
@@ -236,13 +243,19 @@ export function ReqToolGroupPreview({
 }
 
 export function ReqToolCatalogPreview({ result }: { result: AvailableToolsResult }) {
+  const visibleGroups = result.groups.filter((group) => group.tools.length > 0);
+
+  if (visibleGroups.length === 0) {
+    return <p className={styles.catalogEmpty}>当前没有可展示的工具分组。</p>;
+  }
+
   return (
     <div className={styles.catalog}>
-      {result.groups.map((group) => (
+      {visibleGroups.map((group) => (
         <section key={group.key} className={styles.catalogGroup}>
           <div className={styles.catalogGroupHeader}>
             <div className={styles.catalogGroupTitleWrap}>
-              <span className={styles.catalogEyebrow}>{toolCategoryLabels[group.key]}</span>
+              <span className={styles.catalogEyebrow}>{group.title ?? toolCategoryLabels[group.key]}</span>
               <h4 className={styles.catalogGroupTitle}>当前可直接调用的 {group.tools.length} 个工具</h4>
             </div>
             <span className={styles.groupPill}>{group.tools.length} 项</span>
@@ -278,6 +291,60 @@ export function ReqToolCatalogPreview({ result }: { result: AvailableToolsResult
         </section>
       ))}
     </div>
+  );
+}
+
+export function ReqMcpToolInvocationPreview({
+  description,
+  name,
+  rawInput,
+  rawOutput,
+  serverLabel,
+  sourceToolName,
+  state,
+  summary,
+  title,
+  transport,
+}: {
+  description: string;
+  name: string;
+  rawInput?: unknown;
+  rawOutput?: unknown;
+  serverLabel: string;
+  sourceToolName?: string;
+  state: ToolInvocationViewState;
+  summary?: string;
+  title?: string;
+  transport: "http" | "sse" | "stdio";
+}) {
+  return (
+    <ReqMcpToolSurface
+      description={description}
+      name={name}
+      rawInput={rawInput}
+      rawOutput={rawOutput}
+      registryItem={{
+        category: "mcp",
+        description,
+        name,
+        preferredOrder: 999,
+        rendererKind: "mcp",
+        riskLevel: "caution",
+        supportsApproval: false,
+        title: title ?? humanizeToolName(sourceToolName ?? name),
+        usageHint: `${serverLabel} · ${transport} · 外部 MCP 工具`,
+        mcp: {
+          serverId: "preview",
+          serverLabel,
+          transport,
+          mode: "proxy",
+          sourceToolName,
+        },
+      }}
+      state={state}
+      summary={summary}
+      title={title}
+    />
   );
 }
 
@@ -328,20 +395,24 @@ function ReqToolCatalogCall({
         </div>
       </div>
 
-      <div className={styles.toolPanel}>
-        <p className={styles.panelIntro}>{registryItem?.description ?? "用对话里的高亮片段说明当前能调用什么。"}</p>
-        <div className={styles.body}>
-          <ReqToolCatalogPreview result={result} />
-        </div>
-
-        {formattedInput ? (
-          <div className={styles.rawPanel}>
-            <div className={styles.rawBlock}>
-              <span className={styles.rawLabel}>Input</span>
-              <pre className={styles.rawPre}>{formattedInput}</pre>
+      <div className={joinClasses(styles.toolPanelShell, styles.toolPanelShellOpen)}>
+        <div className={styles.toolPanelWrap}>
+          <div className={styles.toolPanel}>
+            <p className={styles.panelIntro}>{registryItem?.description ?? "用对话里的高亮片段说明当前能调用什么。"}</p>
+            <div className={styles.body}>
+              <ReqToolCatalogPreview result={result} />
             </div>
+
+            {formattedInput ? (
+              <div className={styles.rawPanel}>
+                <div className={styles.rawBlock}>
+                  <span className={styles.rawLabel}>Input</span>
+                  <pre className={styles.rawPre}>{formattedInput}</pre>
+                </div>
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        </div>
       </div>
     </article>
   );
@@ -428,6 +499,110 @@ function ReqBashToolPart(props: ToolCallMessagePartProps & { state: ToolInvocati
       state={props.state}
       summary={buildBashSummary(props.state, command, terminal)}
       title={props.registryItem?.title}
+    />
+  );
+}
+
+function ReqMcpToolPart({
+  meta,
+  registryItem,
+  state,
+  ...props
+}: ToolCallMessagePartProps & {
+  meta: ReqAgentMessageMeta | null;
+  registryItem?: ToolRegistryItem;
+  state: ToolInvocationViewState;
+}) {
+  const resolvedRegistryItem = registryItem ?? createSyntheticMcpRegistryItem(props.toolName, meta);
+
+  return (
+    <ReqMcpToolSurface
+      description={resolvedRegistryItem?.description ?? "调用外部 MCP 服务并返回结果。"}
+      name={props.toolName}
+      rawInput={props.args}
+      rawOutput={props.result}
+      registryItem={resolvedRegistryItem}
+      state={state}
+      title={resolvedRegistryItem?.title}
+    />
+  );
+}
+
+function ReqMcpToolSurface({
+  description,
+  name,
+  rawInput,
+  rawOutput,
+  registryItem,
+  state,
+  summary,
+  title,
+}: {
+  description: string;
+  name: string;
+  rawInput?: unknown;
+  rawOutput?: unknown;
+  registryItem?: ToolRegistryItem;
+  state: ToolInvocationViewState;
+  summary?: string;
+  title?: string;
+}) {
+  const serverMeta = registryItem?.mcp;
+  const payload = normalizeMcpToolResult(rawOutput);
+  const metrics = buildMcpMetrics({ payload, registryItem });
+
+  return (
+    <ToolShell
+      description={description}
+      extra={
+        <>
+          <ReqToolProgressTracker state={state} supportsApproval={false} />
+          {serverMeta ? (
+            <section className={styles.mcpMeta}>
+              <p className={styles.mcpMetaLabel}>MCP Route</p>
+              <div className={styles.mcpMetaTokens}>
+                <span className={styles.mcpMetaToken}>{serverMeta.serverLabel}</span>
+                <span className={styles.mcpMetaToken}>{serverMeta.transport.toUpperCase()}</span>
+                <span className={styles.mcpMetaToken}>{serverMeta.mode === "native" ? "原生 MCP" : "代理调用"}</span>
+                {serverMeta.sourceToolName ? (
+                  <span className={joinClasses(styles.mcpMetaToken, styles.code)}>{serverMeta.sourceToolName}</span>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+
+          <section className={styles.mcpPayload}>
+            {payload.textPreview ? (
+              <div className={styles.mcpTextBlock}>
+                <span className={styles.rawLabel}>Text Preview</span>
+                <p className={styles.mcpText}>{payload.textPreview}</p>
+              </div>
+            ) : null}
+
+            {payload.structuredEntries.length > 0 ? (
+              <div className={styles.mcpFieldList}>
+                {payload.structuredEntries.map(([key, value]) => (
+                  <div key={`${name}-${key}`} className={styles.mcpFieldRow}>
+                    <span className={styles.mcpFieldKey}>{formatMetricLabel(key)}</span>
+                    <span className={styles.mcpFieldValue}>{value}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {!payload.textPreview && payload.structuredEntries.length === 0 ? (
+              <p className={styles.panelIntro}>结果已返回。展开 raw output 可以查看完整 MCP payload。</p>
+            ) : null}
+          </section>
+        </>
+      }
+      metrics={metrics}
+      name={name}
+      rawInput={rawInput}
+      rawOutput={rawOutput}
+      state={state}
+      summary={summary ?? buildMcpSummary({ payload, registryItem, state })}
+      title={title ?? registryItem?.title}
     />
   );
 }
@@ -821,10 +996,143 @@ function extractPlan(result: unknown): Array<{ label: string; detail?: string }>
   return normalized.length > 0 ? normalized : null;
 }
 
-function isAvailableToolsResult(result: unknown): result is AvailableToolsResult {
-  if (!result || typeof result !== "object") return false;
-  const candidate = result as Partial<AvailableToolsResult>;
-  return typeof candidate.total === "number" && Array.isArray(candidate.groups);
+function normalizeAvailableToolsResult(result: unknown): AvailableToolsResult | null {
+  if (!result || typeof result !== "object") return null;
+
+  const candidate = result as Record<string, unknown>;
+  const groups = normalizeAvailableToolGroups(candidate.groups);
+
+  if (groups.length > 0) {
+    return {
+      total: typeof candidate.total === "number" ? candidate.total : groups.reduce((sum, group) => sum + group.tools.length, 0),
+      groups,
+      summary:
+        typeof candidate.summary === "string" && candidate.summary.trim()
+          ? candidate.summary
+          : `当前共 ${groups.reduce((sum, group) => sum + group.tools.length, 0)} 个可用工具`,
+    };
+  }
+
+  const derivedGroups = normalizeAvailableToolGroupsFromCategories(candidate.categories) ?? normalizeAvailableToolGroupsFromTools(candidate.tools);
+  if (!derivedGroups || derivedGroups.length === 0) return null;
+
+  return {
+    total: typeof candidate.total === "number" ? candidate.total : derivedGroups.reduce((sum, group) => sum + group.tools.length, 0),
+    groups: derivedGroups,
+    summary:
+      typeof candidate.summary === "string" && candidate.summary.trim()
+        ? candidate.summary
+        : `当前共 ${derivedGroups.reduce((sum, group) => sum + group.tools.length, 0)} 个可用工具`,
+  };
+}
+
+function normalizeAvailableToolGroups(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((group) => normalizeAvailableToolGroup(group))
+    .filter((group): group is AvailableToolsResult["groups"][number] => Boolean(group));
+}
+
+function normalizeAvailableToolGroup(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  const key = normalizeCatalogCategory(candidate.key);
+  if (!key) return null;
+
+  const tools = Array.isArray(candidate.tools)
+    ? candidate.tools
+        .map((tool) => normalizeAvailableToolDescriptor(tool, key))
+        .filter((tool): tool is AvailableToolsResult["groups"][number]["tools"][number] => Boolean(tool))
+    : [];
+
+  return {
+    key,
+    title: typeof candidate.title === "string" && candidate.title.trim() ? candidate.title : toolCategoryLabels[key],
+    tools,
+  };
+}
+
+function normalizeAvailableToolGroupsFromCategories(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+
+  const groups = Object.entries(value as Record<string, unknown>)
+    .map(([key, tools]) => normalizeAvailableToolGroup({ key, tools }))
+    .filter((group): group is AvailableToolsResult["groups"][number] => Boolean(group));
+
+  return groups.length > 0 ? groups : null;
+}
+
+function normalizeAvailableToolGroupsFromTools(value: unknown) {
+  if (!Array.isArray(value)) return null;
+
+  const grouped = new Map<ToolCategory, AvailableToolsResult["groups"][number]["tools"]>();
+
+  for (const tool of value) {
+    if (!tool || typeof tool !== "object") continue;
+    const candidate = tool as Record<string, unknown>;
+    const key = normalizeCatalogCategory(candidate.category);
+    if (!key) continue;
+    const normalizedTool = normalizeAvailableToolDescriptor(candidate, key);
+    if (!normalizedTool) continue;
+
+    const list = grouped.get(key) ?? [];
+    list.push(normalizedTool);
+    grouped.set(key, list);
+  }
+
+  const groups = Array.from(grouped.entries()).map(([key, tools]) => ({
+    key,
+    title: toolCategoryLabels[key],
+    tools,
+  }));
+
+  return groups.length > 0 ? groups : null;
+}
+
+function normalizeAvailableToolDescriptor(value: unknown, fallbackCategory: ToolCategory) {
+  if (!value || typeof value !== "object") return null;
+
+  const candidate = value as Record<string, unknown>;
+  const name = typeof candidate.name === "string" && candidate.name.trim() ? candidate.name : null;
+  if (!name) return null;
+
+  return {
+    name,
+    title: typeof candidate.title === "string" && candidate.title.trim() ? candidate.title : humanizeToolName(name),
+    description:
+      typeof candidate.description === "string" && candidate.description.trim()
+        ? candidate.description
+        : `${toolCategoryLabels[fallbackCategory]}中的可用工具。`,
+    usageHint:
+      typeof candidate.usageHint === "string" && candidate.usageHint.trim()
+        ? candidate.usageHint
+        : `${toolCategoryLabels[fallbackCategory]} · 在需要时调用`,
+    riskLevel: normalizeToolRiskLevel(candidate.riskLevel),
+    preferredToBash: typeof candidate.preferredToBash === "boolean" ? candidate.preferredToBash : name !== "bash",
+    supportsApproval: Boolean(candidate.supportsApproval),
+  };
+}
+
+function normalizeCatalogCategory(value: unknown): ToolCategory | null {
+  switch (value) {
+    case "structured":
+    case "workspace":
+    case "execution":
+    case "interaction":
+    case "mcp":
+      return value;
+    case "shell":
+      return "execution";
+    case "meta":
+      return "interaction";
+    default:
+      return null;
+  }
+}
+
+function normalizeToolRiskLevel(value: unknown): ToolRiskLevel {
+  return value === "caution" || value === "sensitive" ? value : "safe";
 }
 
 function formatMetricLabel(key: string) {
@@ -848,6 +1156,120 @@ function formatInlineValue(value: unknown) {
   if (Array.isArray(value)) return `${value.length} 项`;
   if (value && typeof value === "object") return "对象";
   return "空";
+}
+
+function isMcpToolInvocation(toolName: string, registryItem: ToolRegistryItem | undefined, meta: ReqAgentMessageMeta | null) {
+  if (registryItem?.category === "mcp" || registryItem?.rendererKind === "mcp") return true;
+  return Boolean(meta?.debug?.mcpServers?.some((server) => server.toolNames.includes(toolName)));
+}
+
+function createSyntheticMcpRegistryItem(toolName: string, meta: ReqAgentMessageMeta | null): ToolRegistryItem | undefined {
+  const server = meta?.debug?.mcpServers?.find((candidate) => candidate.toolNames.includes(toolName));
+  if (!server) return undefined;
+
+  return {
+    name: toolName,
+    title: humanizeToolName(toolName),
+    category: "mcp",
+    description: `${server.label} 提供的 MCP 工具。`,
+    usageHint: `${server.label} · ${server.transport} · 运行时注入`,
+    riskLevel: "caution",
+    preferredOrder: 999,
+    supportsApproval: false,
+    rendererKind: "mcp",
+    mcp: {
+      serverId: server.id,
+      serverLabel: server.label,
+      transport: server.transport,
+      mode: server.mode,
+    },
+  };
+}
+
+function normalizeMcpToolResult(result: unknown) {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return {
+      isError: false,
+      structuredEntries: [] as Array<[string, string]>,
+      textPreview: null as string | null,
+    };
+  }
+
+  const record = result as Record<string, unknown>;
+  const content = Array.isArray(record.content) ? record.content : [];
+  const textPreview = content
+    .map((part) => {
+      if (!part || typeof part !== "object") return null;
+      const text = (part as { text?: unknown }).text;
+      return typeof text === "string" ? firstUsefulLine(text) : null;
+    })
+    .find((value): value is string => Boolean(value))
+    ?? (typeof record.content === "string" ? firstUsefulLine(record.content) : null)
+    ?? firstUsefulLine(typeof record.error === "string" ? record.error : "")
+    ?? extractMessage(record)
+    ?? null;
+
+  const structuredContent =
+    record.structuredContent && typeof record.structuredContent === "object" && !Array.isArray(record.structuredContent)
+      ? (record.structuredContent as Record<string, unknown>)
+      : null;
+
+  const structuredEntries = Object.entries(structuredContent ?? {})
+    .map(([key, value]) => {
+      if (typeof value === "string") return [key, truncate(value, 80)] as const;
+      if (typeof value === "number" || typeof value === "boolean") return [key, String(value)] as const;
+      if (Array.isArray(value)) return [key, `${value.length} 项`] as const;
+      if (value && typeof value === "object") return [key, "对象"] as const;
+      return null;
+    })
+    .filter((entry): entry is [string, string] => Boolean(entry))
+    .slice(0, 6);
+
+  return {
+    isError: record.isError === true,
+    structuredEntries,
+    textPreview,
+  };
+}
+
+function buildMcpMetrics({
+  payload,
+  registryItem,
+}: {
+  payload: ReturnType<typeof normalizeMcpToolResult>;
+  registryItem?: ToolRegistryItem;
+}) {
+  return [
+    registryItem?.mcp ? { label: "服务", value: registryItem.mcp.serverLabel } : null,
+    registryItem?.mcp ? { label: "接入", value: registryItem.mcp.transport.toUpperCase() } : null,
+    registryItem?.mcp?.sourceToolName ? { label: "远端", value: registryItem.mcp.sourceToolName } : null,
+    payload.structuredEntries.length > 0 ? { label: "结构化", value: `${payload.structuredEntries.length} 字段` } : null,
+  ].filter(Boolean) as ToolMetric[];
+}
+
+function buildMcpSummary({
+  payload,
+  registryItem,
+  state,
+}: {
+  payload: ReturnType<typeof normalizeMcpToolResult>;
+  registryItem?: ToolRegistryItem;
+  state: ToolInvocationViewState;
+}) {
+  if (state === "drafting_input") return "正在组装 MCP 调用参数。";
+  if (state === "input_ready") return "MCP 参数已收齐，等待发出。";
+  if (state === "executing") return "MCP 工具已发出，等待远端响应。";
+  if (state === "streaming_output") return "远端结果持续返回中。";
+  if (state === "failed" || payload.isError) return payload.textPreview ?? `${registryItem?.title ?? "MCP 工具"}调用失败。`;
+  if (payload.textPreview) return payload.textPreview;
+  return registryItem?.mcp ? `已收到 ${registryItem.mcp.serverLabel} 返回结果。` : "MCP 工具执行完成。";
+}
+
+function humanizeToolName(name: string) {
+  return name
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function getStepMarker(step: string, state: ToolInvocationViewState, supportsApproval: boolean): ProgressMarker {
@@ -994,6 +1416,7 @@ function ToolGlyph({ name, registryItem, className }: { name: string; registryIt
   if (normalizedName === "list_files") return <FolderGlyph className={className} />;
   if (normalizedName === "readfile") return <FileGlyph className={className} />;
   if (normalizedName === "writefile") return <WriteGlyph className={className} />;
+  if (normalizedName === "fetch_url") return <RemoteGlyph className={className} />;
   if (normalizedName === "list_available_tools") return <GridGlyph className={className} />;
   if (normalizedName.includes("plan")) return <PlanGlyph className={className} />;
   if (normalizedName.includes("search")) return <SearchGlyph className={className} />;
@@ -1006,6 +1429,8 @@ function ToolGlyph({ name, registryItem, className }: { name: string; registryIt
       return <TerminalGlyph className={className} />;
     case "catalog":
       return <GridGlyph className={className} />;
+    case "mcp":
+      return <RemoteGlyph className={className} />;
     default:
       break;
   }
@@ -1019,6 +1444,8 @@ function ToolGlyph({ name, registryItem, className }: { name: string; registryIt
       return <ApprovalGlyph className={className} />;
     case "structured":
       return <KnowledgeGlyph className={className} />;
+    case "mcp":
+      return <RemoteGlyph className={className} />;
     default:
       return <FallbackGlyph className={className} />;
   }
@@ -1135,6 +1562,18 @@ function GridGlyph({ className }: { className?: string }) {
       <rect x="14" y="4" width="6" height="6" rx="1.5" />
       <rect x="4" y="14" width="6" height="6" rx="1.5" />
       <rect x="14" y="14" width="6" height="6" rx="1.5" />
+    </svg>
+  );
+}
+
+function RemoteGlyph({ className }: { className?: string }) {
+  return (
+    <svg {...glyphProps(className)}>
+      <path d="M7 8.5h10" />
+      <path d="M7 15.5h10" />
+      <path d="M8.5 5.5 5 8.5l3.5 3" />
+      <path d="m15.5 12.5 3.5 3-3.5 3" />
+      <circle cx="12" cy="12" r="2.5" />
     </svg>
   );
 }

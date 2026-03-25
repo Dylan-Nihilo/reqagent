@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createMCPClient, type ListToolsResult, type MCPClient } from "@ai-sdk/mcp";
 import { Experimental_StdioMCPTransport } from "@ai-sdk/mcp/mcp-stdio";
 import { reqAgentProvider, supportsNativeResponsesMcp } from "@/lib/ai-provider";
-import type { ToolRegistryItem } from "@/lib/tool-registry";
+import type { McpToolRegistryMeta, ToolRegistryItem } from "@/lib/tool-registry";
 
 const DEFAULT_MCP_CONFIG_PATHS = [
   path.join(process.cwd(), "reqagent.mcp.json"),
@@ -278,6 +278,7 @@ function buildRegistryItem(input: {
   description: string;
   usageHint: string;
   preferredOrder: number;
+  mcp: McpToolRegistryMeta;
 }): ToolRegistryItem {
   return {
     name: input.name,
@@ -288,7 +289,8 @@ function buildRegistryItem(input: {
     riskLevel: "caution",
     preferredOrder: input.preferredOrder,
     supportsApproval: false,
-    rendererKind: "structured",
+    rendererKind: "mcp",
+    mcp: input.mcp,
   };
 }
 
@@ -399,6 +401,12 @@ export async function buildMcpRuntime(context: ReqAgentMcpRuntimeContext = {}): 
             description: server.description ?? `调用 ${label} 暴露的远程工具。`,
             usageHint,
             preferredOrder: 500 + registryItems.length,
+            mcp: {
+              serverId: server.id,
+              serverLabel: label,
+              transport: server.transport.type,
+              mode: statusBase.mode,
+            },
           }),
         );
 
@@ -450,6 +458,13 @@ export async function buildMcpRuntime(context: ReqAgentMcpRuntimeContext = {}): 
             description: definition.description ?? server.description ?? `${label} 暴露的 MCP 工具。`,
             usageHint,
             preferredOrder: 500 + registryItems.length,
+            mcp: {
+              serverId: server.id,
+              serverLabel: label,
+              transport: server.transport.type,
+              mode: statusBase.mode,
+              sourceToolName: definition.name,
+            },
           }),
         );
       }
