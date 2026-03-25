@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuiState } from "@assistant-ui/store";
 import {
   MessagePrimitive,
   ThreadPrimitive,
@@ -8,6 +7,7 @@ import {
   useMessageTiming,
   useThread,
   useComposerRuntime,
+  useAuiState,
   type MessageStatus,
 } from "@assistant-ui/react";
 import { ReqComposer } from "@/components/ReqComposer";

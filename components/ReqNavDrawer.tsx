@@ -148,7 +148,7 @@ function ReqNavDrawerRuntime({
   }, [loadThreads, messageCount, activeRemoteId]);
 
   const groups = useMemo(() => getThreadGroups(threads), [threads]);
-  const showDraftThread = !activeRemoteId;
+  const showDraftThread = !activeRemoteId && messageCount > 0;
   const resolvedThreadTitle = activeRemoteId
     ? (activeTitle ?? DEFAULT_THREAD_TITLE)
     : DEFAULT_THREAD_TITLE;
