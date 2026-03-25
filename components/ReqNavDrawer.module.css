@@ -192,7 +192,24 @@
   padding: 0 8px 6px;
 }
 
+.group {
+  margin-bottom: 12px;
+}
+
+.groupLabel {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ra-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0 8px 6px;
+}
+
 /* ── Thread Row ─────────────────────────────────── */
+.threadItem {
+  position: relative;
+}
+
 .threadRow {
   width: 100%;
   display: flex;
@@ -213,7 +230,7 @@
 
 /* active thread */
 .threadRow.active,
-.threadRow:first-child {
+.active {
   background: color-mix(in srgb, var(--ra-text-1) 10%, transparent);
 }
 
@@ -274,6 +291,48 @@
   padding: 0;
   justify-content: center;
   border-radius: 8px;
+}
+
+.threadDelete {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ra-text-3);
+  opacity: 0;
+  cursor: pointer;
+  transition:
+    opacity var(--ra-dur-base) var(--ra-ease-out),
+    background var(--ra-dur-base) var(--ra-ease-out),
+    color var(--ra-dur-base) var(--ra-ease-out);
+}
+
+.threadItem:hover .threadDelete {
+  opacity: 1;
+}
+
+.threadDelete:hover {
+  background: color-mix(in srgb, var(--ra-text-1) 10%, transparent);
+  color: var(--ra-text-1);
+}
+
+.sidebarCollapsed .threadDelete {
+  display: none;
+}
+
+.emptyState {
+  padding: 0 12px;
+  color: var(--ra-text-3);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* ── Bottom: Agent Card ─────────────────────────── */
