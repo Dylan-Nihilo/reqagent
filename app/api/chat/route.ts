@@ -131,6 +131,150 @@ function summarizeForDebug(value: unknown, maxLength = 220) {
   }
 }
 
+type WorkspaceListEntry = {
+  path: string;
+  type: "file" | "dir";
+  size?: number;
+  mtime?: string;
+};
+
+type SearchWorkspaceMatch = {
+  path: string;
+  line: number;
+  match: string;
+  context: string[];
+  score: number;
+};
+
+type ToolCategory = "workspace" | "shell" | "meta" | "mcp";
+
+type MountedToolInfo = {
+  name: string;
+  category: ToolCategory;
+  description: string;
+};
+
+const TOOL_DESCRIPTIONS = {
+  fetch_url:
+    "Fetch the content of a URL and return it as clean Markdown. Use this to read web pages, documentation, PRDs, or competitor sites shared by the user.",
+  list_files:
+    "List files in the workspace directory tree with metadata (type, size, mtime). Supports depth, sorting, hidden-file control, and summary stats.",
+  search_workspace:
+    "Full-text search across workspace files. Supports literal or regex matching, glob filtering, surrounding context, and relevance-ranked results.",
+  readFile:
+    "Read file contents from the workspace. Supports line-based pagination for text and base64 output for binary files.",
+  writeFile:
+    "Write content to a file in the workspace. Supports overwrite, append, and patch modes. Patch mode can replace one or all matches.",
+  bash:
+    "Execute a shell command in the workspace directory. Has full access to system commands (python3, node, git, curl, etc).",
+  list_available_tools:
+    "Return the list of currently available tools with category and description. Call when the user asks what you can do.",
+} as const;
+
+const ALWAYS_IGNORED_ENTRY_NAMES = new Set([".git", "node_modules", ".next", ".pnpm-store"]);
+
+function shouldSkipWorkspaceEntry(name: string, showHidden = false) {
+  if (ALWAYS_IGNORED_ENTRY_NAMES.has(name)) return true;
+  return !showHidden && name.startsWith(".");
+}
+
+function buildGlobMatcher(glob?: string) {
+  if (!glob?.trim()) return null;
+  const normalizedPattern = glob.trim().replace(/\\/g, "/");
+  const basePattern = normalizedPattern.includes("/") ? normalizedPattern : normalizedPattern.split("/").pop() ?? normalizedPattern;
+  const regexSource = basePattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*\*/g, "\u0000")
+    .replace(/\*/g, "[^/]*")
+    .replace(/\?/g, ".")
+    .replace(/\u0000/g, ".*");
+  const matcher = new RegExp(`^${regexSource}$`, "i");
+  return {
+    pattern: normalizedPattern,
+    matches(candidatePath: string) {
+      const normalizedCandidate = candidatePath.replace(/\\/g, "/");
+      const target = normalizedPattern.includes("/")
+        ? normalizedCandidate
+        : normalizedCandidate.split("/").pop() ?? normalizedCandidate;
+      return matcher.test(target);
+    },
+  };
+}
+
+function compareWorkspaceEntries(
+  left: WorkspaceListEntry,
+  right: WorkspaceListEntry,
+  sort: "name" | "size" | "mtime",
+) {
+  if (sort === "size") {
+    const sizeDelta = (right.size ?? 0) - (left.size ?? 0);
+    if (sizeDelta !== 0) return sizeDelta;
+  } else if (sort === "mtime") {
+    const timeDelta = (right.mtime ?? "").localeCompare(left.mtime ?? "");
+    if (timeDelta !== 0) return timeDelta;
+  }
+
+  if (left.type !== right.type) {
+    return left.type === "dir" ? -1 : 1;
+  }
+
+  return left.path.localeCompare(right.path, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function scoreSearchMatch(params: {
+  line: string;
+  query: string;
+  regex: boolean;
+  pattern?: RegExp | null;
+}) {
+  const normalizedLine = params.line.trim().toLowerCase();
+  const normalizedQuery = params.query.trim().toLowerCase();
+
+  if (!params.regex) {
+    if (normalizedLine === normalizedQuery) return 0;
+    if (normalizedLine.startsWith(normalizedQuery)) return 1;
+    return 2;
+  }
+
+  if (!params.pattern) return 3;
+  const firstIndex = params.line.search(params.pattern);
+  if (firstIndex === 0) return 1;
+  if (firstIndex > 0) return 2;
+  return 3;
+}
+
+function categorizeTool(name: string): ToolCategory {
+  if (["list_files", "search_workspace", "readFile", "writeFile", "fetch_url"].includes(name)) {
+    return "workspace";
+  }
+  if (name === "bash") return "shell";
+  if (name === "list_available_tools") return "meta";
+  return "mcp";
+}
+
+function getToolDescription(name: string, tools: Record<string, unknown>) {
+  if (name in TOOL_DESCRIPTIONS) {
+    return TOOL_DESCRIPTIONS[name as keyof typeof TOOL_DESCRIPTIONS];
+  }
+
+  const candidate = tools[name] as
+    | { description?: unknown; tool?: { description?: unknown } }
+    | undefined;
+
+  if (typeof candidate?.description === "string" && candidate.description.trim()) {
+    return candidate.description;
+  }
+
+  if (typeof candidate?.tool?.description === "string" && candidate.tool.description.trim()) {
+    return candidate.tool.description;
+  }
+
+  return "External MCP tool";
+}
+
 // ---------------------------------------------------------------------------
 // Shell execution via execa — real shell, graceful timeout (SIGTERM → SIGKILL)
 // ---------------------------------------------------------------------------
@@ -188,9 +332,7 @@ async function executeInWorkspace(
 
 const customTools = {
   fetch_url: tool({
-    description:
-      "Fetch the content of a URL and return it as clean Markdown. " +
-      "Use this to read web pages, documentation, PRDs, or competitor sites shared by the user.",
+    description: TOOL_DESCRIPTIONS.fetch_url,
     inputSchema: jsonSchema<{ url: string }>({
       type: "object",
       properties: {
@@ -233,9 +375,9 @@ const SYSTEM_PROMPT = `你是 ReqAgent，一个 AI 助手。用中文回复，�
 
 结构化工具（优先使用）：
 - list_files: 查看工作区目录结构（含 type/size/mtime）。首先使用这个了解项目布局。
-- search_workspace: 在工作区中搜索文本，支持 glob 过滤和上下文行。找代码、找文档用这个。
-- readFile: 读取文件内容，支持 offset/limit 分段读取大文件。
-- writeFile: 写入文件，支持 overwrite/append/patch 三种模式。patch 模式可以查找替换文件中的指定内容。
+- search_workspace: 在工作区中搜索文本，支持 glob、regex、上下文行和相关性排序。找代码、找文档用这个。
+- readFile: 读取文件内容，支持 offset/limit 分段读取大文件，也支持 base64 返回原始文件内容。
+- writeFile: 写入文件，支持 overwrite/append/patch 三种模式。patch 模式支持 replaceAll。
 - fetch_url: 抓取任意网页并返回 Markdown。用户分享链接、查竞品、查文档时调用。
 - list_available_tools: 返回实际挂载的工具目录。当用户问”你能做什么”时调用。
 
@@ -318,111 +460,240 @@ export async function POST(req: Request) {
 
   const workspaceTools = {
     list_files: tool({
-      description:
-        "List files in the workspace directory tree with metadata (type, size, mtime). " +
-        "Use this FIRST to understand the workspace layout before reading specific files.",
-      inputSchema: jsonSchema<{ dir?: string; maxDepth?: number; limit?: number }>({
+      description: TOOL_DESCRIPTIONS.list_files,
+      inputSchema: jsonSchema<{
+        dir?: string;
+        maxDepth?: number;
+        limit?: number;
+        sort?: "name" | "size" | "mtime";
+        showHidden?: boolean;
+      }>({
         type: "object",
         properties: {
           dir: { type: "string", description: "Subdirectory to list (default: workspace root)" },
           maxDepth: { type: "number", description: "Max directory depth (default: 3)" },
           limit: { type: "number", description: "Max entries to return (default: 200)" },
+          sort: {
+            type: "string",
+            enum: ["name", "size", "mtime"],
+            description: "Sort entries by name, size, or mtime (default: name)",
+          },
+          showHidden: {
+            type: "boolean",
+            description: "Include hidden dotfiles except always-ignored system folders (default: false)",
+          },
         },
       }),
-      execute: async ({ dir, maxDepth, limit }) => {
+      execute: async ({ dir, maxDepth, limit, sort, showHidden }) => {
         const { promises: fs } = await import("node:fs");
-        const targetDir = path.resolve(runtimeContext.workspaceDir, dir || "");
-        if (!targetDir.startsWith(runtimeContext.workspaceDir)) {
+        const targetDir = resolveWorkspacePath(runtimeContext.workspaceDir, dir || ".");
+        if (!targetDir) {
           return { error: "Access denied: path outside workspace", root: dir, entries: [], count: 0 };
         }
-        const maxEntries = Math.min(limit ?? 200, 500);
-        const entries: Array<{ path: string; type: "file" | "dir"; size?: number; mtime?: string }> = [];
-        const IGNORED = new Set([".git", "node_modules", ".next", ".pnpm-store"]);
 
-        async function walk(d: string, depth: number) {
-          if (depth > (maxDepth ?? 3) || entries.length >= maxEntries) return;
-          const dirEntries = await fs.readdir(d, { withFileTypes: true }).catch(() => []);
+        let targetStat;
+        try {
+          targetStat = await fs.stat(targetDir);
+        } catch (error) {
+          return {
+            error: error instanceof Error ? error.message : "Failed to access target directory",
+            root: dir || ".",
+            entries: [],
+            count: 0,
+          };
+        }
+
+        if (!targetStat.isDirectory()) {
+          return {
+            error: "Target path is not a directory",
+            root: dir || ".",
+            entries: [],
+            count: 0,
+          };
+        }
+
+        const requestedLimit = Math.min(Math.max(limit ?? 200, 1), 500);
+        const maxDiscoveredEntries = Math.max(requestedLimit, 2_000);
+        const effectiveSort = sort ?? "name";
+        const includeHidden = Boolean(showHidden);
+        const entries: WorkspaceListEntry[] = [];
+        let discoveredTruncated = false;
+
+        async function walk(currentDir: string, depth: number) {
+          if (depth > (maxDepth ?? 3) || discoveredTruncated) return;
+          const dirEntries = (await fs.readdir(currentDir, { withFileTypes: true }).catch(() => []))
+            .filter((entry) => !shouldSkipWorkspaceEntry(entry.name, includeHidden))
+            .sort((left, right) =>
+              left.name.localeCompare(right.name, undefined, {
+                numeric: true,
+                sensitivity: "base",
+              }),
+            );
+
           for (const entry of dirEntries) {
-            if (entries.length >= maxEntries) break;
-            if (IGNORED.has(entry.name)) continue;
-            const abs = path.join(d, entry.name);
+            if (entries.length >= maxDiscoveredEntries) {
+              discoveredTruncated = true;
+              break;
+            }
+            const abs = path.join(currentDir, entry.name);
             const rel = path.relative(runtimeContext.workspaceDir, abs);
+            let stat;
+
+            try {
+              stat = await fs.stat(abs);
+            } catch {
+              stat = undefined;
+            }
+
             if (entry.isDirectory()) {
-              entries.push({ path: rel + "/", type: "dir" });
+              entries.push({
+                path: `${rel.replace(/\\/g, "/")}/`,
+                type: "dir",
+                mtime: stat ? new Date(stat.mtimeMs).toISOString() : undefined,
+              });
               await walk(abs, depth + 1);
             } else {
-              try {
-                const stat = await fs.stat(abs);
-                entries.push({ path: rel, type: "file", size: stat.size, mtime: new Date(stat.mtimeMs).toISOString() });
-              } catch {
-                entries.push({ path: rel, type: "file" });
-              }
+              entries.push({
+                path: rel.replace(/\\/g, "/"),
+                type: "file",
+                size: stat?.size,
+                mtime: stat ? new Date(stat.mtimeMs).toISOString() : undefined,
+              });
             }
           }
         }
 
         await walk(targetDir, 0);
-        return { root: dir || ".", entries, count: entries.length, truncated: entries.length >= maxEntries };
+        const sortedEntries = [...entries].sort((left, right) =>
+          compareWorkspaceEntries(left, right, effectiveSort),
+        );
+        const limitedEntries = sortedEntries.slice(0, requestedLimit);
+        const fileCount = sortedEntries.filter((entry) => entry.type === "file").length;
+        const dirCount = sortedEntries.filter((entry) => entry.type === "dir").length;
+        const totalSize = sortedEntries.reduce((sum, entry) => sum + (entry.size ?? 0), 0);
+
+        return {
+          root: dir || ".",
+          sort: effectiveSort,
+          showHidden: includeHidden,
+          entries: limitedEntries,
+          count: limitedEntries.length,
+          totalEntries: sortedEntries.length,
+          truncated: discoveredTruncated || sortedEntries.length > requestedLimit,
+          fileCount,
+          dirCount,
+          totalSize,
+        };
       },
     }),
 
     search_workspace: tool({
-      description:
-        "Full-text search across workspace files. Returns matching lines with surrounding context. " +
-        "Supports glob filtering (e.g. '*.py', '*.md').",
-      inputSchema: jsonSchema<{ query: string; limit?: number; contextLines?: number; glob?: string }>({
+      description: TOOL_DESCRIPTIONS.search_workspace,
+      inputSchema: jsonSchema<{
+        query: string;
+        limit?: number;
+        contextLines?: number;
+        glob?: string;
+        regex?: boolean;
+        maxFileSize?: number;
+      }>({
         type: "object",
         properties: {
           query: { type: "string", description: "Text to search for (case-insensitive)" },
           limit: { type: "number", description: "Max results (default: 12)" },
           contextLines: { type: "number", description: "Lines of context before/after each match (default: 1)" },
           glob: { type: "string", description: "File extension filter, e.g. '*.md' or '*.py'" },
+          regex: { type: "boolean", description: "Treat query as a regex pattern (default: false)" },
+          maxFileSize: {
+            type: "number",
+            description: "Max file size in bytes to search (default: 524288)",
+          },
         },
         required: ["query"],
       }),
-      execute: async ({ query, limit, contextLines, glob }) => {
+      execute: async ({ query, limit, contextLines, glob, regex, maxFileSize }) => {
         const { promises: fs } = await import("node:fs");
         const maxResults = Math.min(limit ?? 12, 30);
         const ctx = Math.min(contextLines ?? 1, 5);
-        const ext = glob?.startsWith("*.") ? glob.slice(1) : null;
-        const IGNORED = new Set([".git", "node_modules", ".next"]);
-        const MAX_FILE_SIZE = 512 * 1024;
-        const matches: Array<{ path: string; line: number; match: string; context: string[] }> = [];
+        const maxBytes = Math.min(Math.max(maxFileSize ?? 512 * 1024, 1), 5 * 1024 * 1024);
+        const lowerQuery = query.toLowerCase();
+        const globMatcher = buildGlobMatcher(glob);
+        const matches: SearchWorkspaceMatch[] = [];
         let totalMatches = 0;
+        let filesSearched = 0;
+        let filesMatched = 0;
+        let pattern: RegExp | null = null;
+
+        if (regex) {
+          try {
+            pattern = new RegExp(query, "i");
+          } catch (error) {
+            return {
+              error: error instanceof Error ? error.message : "Invalid regex pattern",
+              query,
+              regex: true,
+            };
+          }
+        }
 
         async function search(dir: string) {
-          const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+          const entries = (await fs.readdir(dir, { withFileTypes: true }).catch(() => []))
+            .filter((entry) => !shouldSkipWorkspaceEntry(entry.name))
+            .sort((left, right) =>
+              left.name.localeCompare(right.name, undefined, {
+                numeric: true,
+                sensitivity: "base",
+              }),
+            );
+
           for (const entry of entries) {
-            if (IGNORED.has(entry.name)) continue;
             const abs = path.join(dir, entry.name);
             if (!abs.startsWith(runtimeContext.workspaceDir)) continue;
             if (entry.isDirectory()) {
               await search(abs);
             } else {
-              if (ext && !entry.name.endsWith(ext)) continue;
+              const relPath = path.relative(runtimeContext.workspaceDir, abs).replace(/\\/g, "/");
+              if (globMatcher && !globMatcher.matches(relPath)) continue;
+
               try {
                 const stat = await fs.stat(abs);
-                if (stat.size > MAX_FILE_SIZE) continue;
+                if (stat.size > maxBytes) continue;
+                filesSearched++;
                 const content = await fs.readFile(abs, "utf8");
                 const lines = content.split("\n");
-                const lowerQuery = query.toLowerCase();
+                let fileMatchCount = 0;
+
                 for (let i = 0; i < lines.length; i++) {
-                  if (lines[i].toLowerCase().includes(lowerQuery)) {
+                  const line = lines[i] ?? "";
+                  const isMatch = pattern
+                    ? pattern.test(line)
+                    : line.toLowerCase().includes(lowerQuery);
+
+                  if (isMatch) {
                     totalMatches++;
-                    if (matches.length < maxResults) {
-                      const start = Math.max(0, i - ctx);
-                      const end = Math.min(lines.length - 1, i + ctx);
-                      matches.push({
-                        path: path.relative(runtimeContext.workspaceDir, abs),
-                        line: i + 1,
-                        match: lines[i].trim().slice(0, 200),
-                        context: lines.slice(start, end + 1).map((l, idx) => {
-                          const n = start + idx + 1;
-                          return `${n === i + 1 ? ">" : " "}${String(n).padStart(4)}│ ${l}`;
-                        }),
-                      });
-                    }
+                    fileMatchCount++;
+                    const start = Math.max(0, i - ctx);
+                    const end = Math.min(lines.length - 1, i + ctx);
+                    matches.push({
+                      path: relPath,
+                      line: i + 1,
+                      match: line.trim().slice(0, 200),
+                      context: lines.slice(start, end + 1).map((contextLine, idx) => {
+                        const n = start + idx + 1;
+                        return `${n === i + 1 ? ">" : " "}${String(n).padStart(4)}│ ${contextLine}`;
+                      }),
+                      score: scoreSearchMatch({
+                        line,
+                        query,
+                        regex: Boolean(regex),
+                        pattern,
+                      }),
+                    });
                   }
+                }
+
+                if (fileMatchCount > 0) {
+                  filesMatched++;
                 }
               } catch {
                 // Skip unreadable files
@@ -432,23 +703,56 @@ export async function POST(req: Request) {
         }
 
         await search(runtimeContext.workspaceDir);
-        return { query, found: matches.length, totalMatches, matches, truncated: totalMatches > matches.length };
+        const rankedMatches = matches
+          .sort((left, right) => {
+            if (left.score !== right.score) return left.score - right.score;
+            const pathDelta = left.path.localeCompare(right.path, undefined, {
+              numeric: true,
+              sensitivity: "base",
+            });
+            if (pathDelta !== 0) return pathDelta;
+            return left.line - right.line;
+          })
+          .slice(0, maxResults)
+          .map(({ score: _score, ...match }) => match);
+
+        return {
+          query,
+          regex: Boolean(regex),
+          glob: globMatcher?.pattern,
+          found: rankedMatches.length,
+          totalMatches,
+          filesSearched,
+          filesMatched,
+          maxFileSize: maxBytes,
+          matches: rankedMatches,
+          truncated: totalMatches > rankedMatches.length,
+        };
       },
     }),
 
     readFile: tool({
-      description:
-        "Read file contents from the workspace. Supports line-based pagination for large files.",
-      inputSchema: jsonSchema<{ path: string; offset?: number; limit?: number }>({
+      description: TOOL_DESCRIPTIONS.readFile,
+      inputSchema: jsonSchema<{
+        path: string;
+        offset?: number;
+        limit?: number;
+        encoding?: "utf8" | "base64";
+      }>({
         type: "object",
         properties: {
           path: { type: "string", description: "Relative path to the file" },
           offset: { type: "number", description: "Start from this line number (1-based, default: 1)" },
           limit: { type: "number", description: "Max lines to return (default: all, cap: 2000)" },
+          encoding: {
+            type: "string",
+            enum: ["utf8", "base64"],
+            description: "Return text as utf8 or raw file bytes as base64 (default: utf8)",
+          },
         },
         required: ["path"],
       }),
-      execute: async ({ path: targetPath, offset, limit }) => {
+      execute: async ({ path: targetPath, offset, limit, encoding }) => {
         const { promises: fs } = await import("node:fs");
         const resolved = resolveWorkspacePath(runtimeContext.workspaceDir, targetPath);
         if (!resolved) {
@@ -457,6 +761,18 @@ export async function POST(req: Request) {
 
         try {
           const stat = await fs.stat(resolved);
+          const effectiveEncoding = encoding === "base64" ? "base64" : "utf8";
+
+          if (effectiveEncoding === "base64") {
+            const buffer = await fs.readFile(resolved);
+            return {
+              path: path.relative(runtimeContext.workspaceDir, resolved).replace(/\\/g, "/"),
+              content: buffer.toString("base64"),
+              encoding: "base64",
+              sizeBytes: stat.size,
+            };
+          }
+
           const content = await fs.readFile(resolved, "utf8");
           const lines = content.split("\n");
           const totalLines = lines.length;
@@ -465,8 +781,9 @@ export async function POST(req: Request) {
           const sliced = lines.slice(startLine - 1, startLine - 1 + maxLines);
 
           return {
-            path: path.relative(runtimeContext.workspaceDir, resolved),
+            path: path.relative(runtimeContext.workspaceDir, resolved).replace(/\\/g, "/"),
             content: sliced.join("\n"),
+            encoding: "utf8",
             totalLines,
             fromLine: startLine,
             toLine: startLine + sliced.length - 1,
@@ -484,19 +801,28 @@ export async function POST(req: Request) {
 
     writeFile: {
       ...tool({
-        description:
-          "Write content to a file in the workspace. Modes: overwrite (default), append, patch (find-and-replace `match` with `content`).",
-        inputSchema: jsonSchema<{ path: string; content: string; mode?: string; match?: string }>({
+        description: TOOL_DESCRIPTIONS.writeFile,
+        inputSchema: jsonSchema<{
+          path: string;
+          content: string;
+          mode?: string;
+          match?: string;
+          replaceAll?: boolean;
+        }>({
           type: "object",
           properties: {
             path: { type: "string", description: "Relative path to the file" },
             content: { type: "string", description: "Content to write, or replacement text in patch mode" },
             mode: { type: "string", enum: ["overwrite", "append", "patch"], description: "Write mode (default: overwrite)" },
             match: { type: "string", description: "Text to find and replace (required for patch mode)" },
+            replaceAll: {
+              type: "boolean",
+              description: "Replace all matches in patch mode instead of only the first one (default: false)",
+            },
           },
           required: ["path", "content"],
         }),
-        execute: async ({ path: targetPath, content, mode, match }) => {
+        execute: async ({ path: targetPath, content, mode, match, replaceAll }) => {
           const { promises: fs } = await import("node:fs");
           const resolved = resolveWorkspacePath(runtimeContext.workspaceDir, targetPath);
           if (!resolved) {
@@ -505,6 +831,7 @@ export async function POST(req: Request) {
 
           await fs.mkdir(path.dirname(resolved), { recursive: true });
           const effectiveMode = mode ?? "overwrite";
+          let replacements: number | undefined;
 
           if (effectiveMode === "patch") {
             if (!match) return { error: "patch mode requires the `match` parameter", path: targetPath };
@@ -514,10 +841,15 @@ export async function POST(req: Request) {
             } catch {
               return { error: "File does not exist — cannot patch", path: targetPath };
             }
-            if (!existing.includes(match)) {
+            const occurrenceCount = existing.split(match).length - 1;
+            if (occurrenceCount === 0) {
               return { error: "match text not found in file", path: targetPath, matchPreview: match.slice(0, 120) };
             }
-            await fs.writeFile(resolved, existing.replace(match, content), "utf8");
+            const nextContent = replaceAll
+              ? existing.split(match).join(content)
+              : existing.replace(match, content);
+            replacements = replaceAll ? occurrenceCount : 1;
+            await fs.writeFile(resolved, nextContent, "utf8");
           } else if (effectiveMode === "append") {
             await fs.appendFile(resolved, content, "utf8");
           } else {
@@ -527,8 +859,10 @@ export async function POST(req: Request) {
           const stat = await fs.stat(resolved);
           return {
             success: true,
-            path: path.relative(runtimeContext.workspaceDir, resolved),
+            path: path.relative(runtimeContext.workspaceDir, resolved).replace(/\\/g, "/"),
             mode: effectiveMode,
+            replaceAll: effectiveMode === "patch" ? Boolean(replaceAll) : undefined,
+            replacements,
             sizeBytes: stat.size,
           };
         },
@@ -544,9 +878,7 @@ export async function POST(req: Request) {
     ...mcpRuntime.tools,
     bash: {
       ...tool({
-        description:
-          "Execute a shell command in the workspace directory. Has full access to system commands (python3, node, git, curl, etc). " +
-          "Working directory is the workspace root.",
+        description: TOOL_DESCRIPTIONS.bash,
         inputSchema: jsonSchema<{ command: string; timeout?: number }>({
           type: "object",
           properties: {
@@ -562,7 +894,7 @@ export async function POST(req: Request) {
       needsApproval: true,
     },
     list_available_tools: tool({
-      description: "Return the list of currently available tools. Call when the user asks what you can do.",
+      description: TOOL_DESCRIPTIONS.list_available_tools,
       inputSchema: jsonSchema<Record<string, never>>({
         type: "object",
         properties: {},
@@ -574,11 +906,28 @@ export async function POST(req: Request) {
           "bash",
           "list_available_tools",
         ];
+        const toolSources: Record<string, unknown> = {
+          ...workspaceTools,
+          ...mcpRuntime.tools,
+        };
+        const tools: MountedToolInfo[] = mountedNames.map((name) => ({
+          name,
+          category: categorizeTool(name),
+          description: getToolDescription(name, toolSources),
+        }));
+
         return {
           ...availableToolsResult,
           mountedToolNames: mountedNames,
-          total: mountedNames.length,
-          summary: `当前共 ${mountedNames.length} 个可用工具`,
+          total: tools.length,
+          tools,
+          categories: {
+            workspace: tools.filter((toolEntry) => toolEntry.category === "workspace"),
+            shell: tools.filter((toolEntry) => toolEntry.category === "shell"),
+            meta: tools.filter((toolEntry) => toolEntry.category === "meta"),
+            mcp: tools.filter((toolEntry) => toolEntry.category === "mcp"),
+          },
+          summary: `当前共 ${tools.length} 个可用工具（workspace ${tools.filter((toolEntry) => toolEntry.category === "workspace").length} / mcp ${tools.filter((toolEntry) => toolEntry.category === "mcp").length}）`,
         };
       },
     }),
