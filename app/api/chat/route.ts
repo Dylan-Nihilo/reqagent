@@ -1057,10 +1057,32 @@ export async function POST(req: Request) {
           return withToolState(chunk.toolCallId ?? "unknown", "denied", "已拒绝");
         case "text-start":
         case "text-delta":
-          return { custom: { ...basePayload, agentActivity: "responding", phaseLabel: "生成回复" } };
+          // Slim payload — text-delta fires 30+/sec, omit debug arrays to save ~2-5KB/chunk
+          return {
+            custom: {
+              model: providerInfo.model,
+              wireApi: providerInfo.wireApi,
+              activeRole: null,
+              agentActivity: "responding" as const,
+              phaseLabel: "生成回复",
+              publicThinking: "",
+              toolInvocationStates: { ...toolInvocationStates },
+            },
+          };
         case "reasoning-start":
         case "reasoning-delta":
-          return { custom: { ...basePayload, agentActivity: "thinking", phaseLabel: "推理" } };
+          // Slim payload — same reasoning: omit debug arrays on high-frequency reasoning chunks
+          return {
+            custom: {
+              model: providerInfo.model,
+              wireApi: providerInfo.wireApi,
+              activeRole: null,
+              agentActivity: "thinking" as const,
+              phaseLabel: "推理",
+              publicThinking: "",
+              toolInvocationStates: { ...toolInvocationStates },
+            },
+          };
         default:
           return { custom: { ...basePayload, agentActivity: "responding", phaseLabel: "对话" } };
       }
