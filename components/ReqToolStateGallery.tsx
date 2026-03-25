@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ReqMessage } from "@/components/ReqMessage";
 import {
+  ReqMcpToolInvocationPreview,
   ReqToolCatalogPreview,
   ReqToolGroupPreview,
   ReqToolInvocationPreview,
@@ -16,10 +17,68 @@ import {
   toolRiskLabels,
   type AvailableToolGroup,
   type ToolCategory,
+  type ToolRegistryItem,
 } from "@/lib/tool-registry";
 import { toolInvocationStateCatalog, type ToolInvocationStateTone } from "@/lib/tool-invocation-states";
 
-const toolCatalog = getAvailableToolsResult();
+const galleryMcpTools: ToolRegistryItem[] = [
+  {
+    name: "fs_read_file",
+    title: "Read File",
+    category: "mcp",
+    description: "通过 Workspace Filesystem MCP 读取当前工作区文件。",
+    usageHint: "Workspace Filesystem · stdio · read_file",
+    riskLevel: "caution",
+    preferredOrder: 500,
+    supportsApproval: false,
+    rendererKind: "mcp",
+    mcp: {
+      serverId: "filesystem",
+      serverLabel: "Workspace Filesystem",
+      transport: "stdio",
+      mode: "proxy",
+      sourceToolName: "read_file",
+    },
+  },
+  {
+    name: "fs_search_files",
+    title: "Search Files",
+    category: "mcp",
+    description: "通过 Workspace Filesystem MCP 在允许目录内搜索文件。",
+    usageHint: "Workspace Filesystem · stdio · search_files",
+    riskLevel: "caution",
+    preferredOrder: 510,
+    supportsApproval: false,
+    rendererKind: "mcp",
+    mcp: {
+      serverId: "filesystem",
+      serverLabel: "Workspace Filesystem",
+      transport: "stdio",
+      mode: "proxy",
+      sourceToolName: "search_files",
+    },
+  },
+  {
+    name: "browser_open_page",
+    title: "Open Page",
+    category: "mcp",
+    description: "通过 Browser MCP 打开页面并提取结构化结果。",
+    usageHint: "Browser MCP · http · open_page",
+    riskLevel: "caution",
+    preferredOrder: 520,
+    supportsApproval: false,
+    rendererKind: "mcp",
+    mcp: {
+      serverId: "browser",
+      serverLabel: "Browser MCP",
+      transport: "http",
+      mode: "native",
+      sourceToolName: "open_page",
+    },
+  },
+];
+
+const toolCatalog = getAvailableToolsResult(galleryMcpTools);
 const toolGroupMap = new Map(toolCatalog.groups.map((group) => [group.key, group] as const));
 
 const categorySections: Array<{
@@ -62,6 +121,14 @@ const categorySections: Array<{
     lead: "让人看懂能做什么，也能决定是否放行。",
     description: "工具目录、审批确认和未知工具兜底都属于交互层，不应退回普通文本。",
   },
+  {
+    key: "mcp",
+    anchor: "mcp-tools",
+    index: "05",
+    title: "MCP 外部工具",
+    lead: "外部服务也要落在统一的工具语义里。",
+    description: "MCP 返回的是远端 payload，不该直接丢 JSON；要先说明路由，再压缩文本和结构化结果。",
+  },
 ];
 
 const categoryToneClasses: Record<ToolCategory, string> = {
@@ -69,7 +136,7 @@ const categoryToneClasses: Record<ToolCategory, string> = {
   workspace: styles.sectionWorkspace,
   execution: styles.sectionExecution,
   interaction: styles.sectionInteraction,
-  mcp: styles.sectionWorkspace,
+  mcp: styles.sectionMcp,
 };
 
 const stateToneClasses: Record<ToolInvocationStateTone, string> = {
@@ -88,7 +155,7 @@ export function ReqToolStateGallery() {
             <p className={styles.eyebrow}>ReqAgent</p>
             <h1 className={styles.title}>Agent 工具库</h1>
             <p className={styles.lead}>
-              工具按动作职责分四类：结构化收敛、工作区定位、执行动作、交互审批。分类先定义“这是什么动作”，再决定应该用哪一种表现。
+              工具按动作职责分五类：结构化收敛、工作区定位、执行动作、交互审批、MCP 外部调用。分类先定义“这是什么动作”，再决定应该用哪一种表现。
             </p>
             <div className={styles.linkRow}>
               <Link className={styles.link} href="/gallery">
@@ -103,10 +170,10 @@ export function ReqToolStateGallery() {
           <aside className={styles.heroAside}>
             <p className={styles.heroAsideLabel}>分类规则</p>
             <p className={styles.heroAsideText}>
-              分类按工具职责，不按组件形态。先拿到结构化信息，再进入工作区定位，再执行动作，最后通过目录或审批完成交互闭环。
+              分类按工具职责，不按组件形态。先拿到结构化信息，再进入工作区定位，必要时接入外部 MCP，最后通过执行与审批完成闭环。
             </p>
             <div className={styles.heroStats}>
-              <span className={styles.heroStat}>4 类工具</span>
+              <span className={styles.heroStat}>5 类工具</span>
               <span className={styles.heroStat}>{toolCatalog.total} 个已接入工具</span>
               <span className={styles.heroStat}>{toolInvocationStateCatalog.length} 个调用状态</span>
               <span className={styles.heroStat}>/gallery/tools</span>
@@ -117,7 +184,7 @@ export function ReqToolStateGallery() {
         <section className={styles.statusBand}>
           <div className={styles.statusIntro}>
             <p className={styles.statusEyebrow}>Invocation States</p>
-            <p className={styles.statusCopy}>四类工具共享同一套调用状态语义，只是表现形态不同。</p>
+            <p className={styles.statusCopy}>五类工具共享同一套调用状态语义，只是表现形态不同。</p>
           </div>
 
           <div className={styles.statusRail}>
@@ -151,7 +218,7 @@ export function ReqToolStateGallery() {
               <ReqToolInvocationPreview
                 description="读取目标文件，确认 message 与 tool 的排版骨架。"
                 metrics={[{ label: "命中", value: "2 files" }]}
-                name="readfile"
+                name="readFile"
                 rawInput={{ path: "components/tool-ui/ReqToolUI.tsx" }}
                 rawOutput={{ path: "components/tool-ui/ReqToolUI.tsx", summary: "已定位到进度条与状态 token 逻辑。" }}
                 state="succeeded"
@@ -474,19 +541,117 @@ export function ReqToolStateGallery() {
                 title="Shell 执行"
               />
               <ReqToolInvocationPreview
-                description="未知工具或未来 MCP 工具的兜底表现。"
+                description="未知工具仍然要有稳定兜底，但已知 MCP 工具应该进入专门渲染。"
                 metrics={[
-                  { label: "工具", value: "mcp.remote_search" },
+                  { label: "工具", value: "unknown.future_tool" },
                   { label: "状态", value: "fallback" },
                 ]}
-                name="mcp.remote_search"
+                name="unknown.future_tool"
                 rawInput={{ query: "assistant-ui tools" }}
                 rawOutput={{ total: 4, summary: "Found 4 results" }}
                 state="succeeded"
-                 summary="未知工具也必须有可读结果卡片，不能回退成裸 JSON。"
+                summary="未知工具也必须有可读结果卡片，不能回退成裸 JSON。"
                 title="Unknown / Fallback"
               />
             </div>
+          </ShowcaseBlock>
+        </CategorySection>
+
+        <CategorySection
+          anchor="mcp-tools"
+          description="MCP 工具代表远端服务调用，界面要先回答“去了哪里”，再回答“拿回了什么”。"
+          group={getToolGroup("mcp")}
+          index="05"
+          lead="外部服务也要落在统一的工具语义里。"
+          title="MCP 外部工具"
+          toneClass={categoryToneClasses.mcp}
+        >
+          <ShowcaseBlock
+            eyebrow="Remote Receipt"
+            title="远端调用先展示路由，再压缩返回结果"
+          >
+            <div className={styles.stack}>
+              <ReqMcpToolInvocationPreview
+                description="通过 Workspace Filesystem MCP 读取当前工作区文件。"
+                name="fs_read_file"
+                rawInput={{ path: "docs/requirements.md" }}
+                rawOutput={{
+                  content: [
+                    {
+                      type: "text",
+                      text: "# Requirements\n\nCurrent draft includes MCP rendering notes.",
+                    },
+                  ],
+                  isError: false,
+                  structuredContent: {
+                    relativePath: "docs/requirements.md",
+                    charCount: 1842,
+                    truncated: false,
+                  },
+                }}
+                serverLabel="Workspace Filesystem"
+                sourceToolName="read_file"
+                state="succeeded"
+                summary="先标明来自哪个 MCP，再摘出文件和结果摘要。"
+                title="Read File"
+                transport="stdio"
+              />
+              <ReqMcpToolInvocationPreview
+                description="通过 Browser MCP 打开页面并返回结构化结果。"
+                name="browser_open_page"
+                rawInput={{ url: "https://assistant-ui.com/tools" }}
+                rawOutput={{
+                  content: [
+                    {
+                      type: "text",
+                      text: "Page loaded. Found 6 tool-related sections and 2 code samples.",
+                    },
+                  ],
+                  isError: false,
+                  structuredContent: {
+                    url: "https://assistant-ui.com/tools",
+                    sections: 6,
+                    codeSamples: 2,
+                    title: "Tools",
+                  },
+                }}
+                serverLabel="Browser MCP"
+                sourceToolName="open_page"
+                state="streaming_output"
+                summary="MCP 返回在流式阶段也要保留外部调用语义。"
+                title="Open Page"
+                transport="http"
+              />
+            </div>
+          </ShowcaseBlock>
+
+          <ShowcaseBlock
+            eyebrow="Remote Error"
+            title="错误要区分远端失败，而不是本地工具异常"
+          >
+            <ReqMcpToolInvocationPreview
+              description="通过 Workspace Filesystem MCP 在允许目录内读取文件。"
+              name="fs_read_file"
+              rawInput={{ path: "/etc/passwd" }}
+              rawOutput={{
+                content: [
+                  {
+                    type: "text",
+                    text: "Access denied: /etc/passwd",
+                  },
+                ],
+                isError: true,
+                structuredContent: {
+                  path: "/etc/passwd",
+                },
+              }}
+              serverLabel="Workspace Filesystem"
+              sourceToolName="read_file"
+              state="failed"
+              summary="远端拒绝访问时，要直接显示 MCP 返回的错误语义。"
+              title="Read File"
+              transport="stdio"
+            />
           </ShowcaseBlock>
         </CategorySection>
 

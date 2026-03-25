@@ -17,7 +17,7 @@ import {
   syncThreadUiMessages,
 } from "@/lib/db/store";
 import { buildMcpRuntime } from "@/lib/mcp";
-import { getAvailableToolsResult } from "@/lib/tool-registry";
+import { buildAvailableToolsResult, getToolRegistryItem } from "@/lib/tool-registry";
 import { DEFAULT_WORKSPACE_ID } from "@/lib/threads";
 import type { ToolInvocationViewState } from "@/lib/types";
 
@@ -452,7 +452,6 @@ export async function POST(req: Request) {
     threadId: runtimeContext.threadId,
     threadKey: runtimeContext.threadKey,
   });
-  const availableToolsResult = getAvailableToolsResult(mcpRuntime.registryItems);
 
   const workspaceTools = {
     list_files: tool({
@@ -896,6 +895,13 @@ export async function POST(req: Request) {
           "bash",
           "list_available_tools",
         ];
+        const mountedRegistryItems = [
+          ...mountedNames
+            .map((name) => getToolRegistryItem(name))
+            .filter((item): item is NonNullable<typeof item> => Boolean(item)),
+          ...mcpRuntime.registryItems,
+        ];
+        const availableToolsResult = buildAvailableToolsResult(mountedRegistryItems);
         const toolSources: Record<string, unknown> = {
           ...workspaceTools,
           ...mcpRuntime.tools,
@@ -917,6 +923,7 @@ export async function POST(req: Request) {
             meta: tools.filter((toolEntry) => toolEntry.category === "meta"),
             mcp: tools.filter((toolEntry) => toolEntry.category === "mcp"),
           },
+          servers: mcpRuntime.servers,
           summary: `当前共 ${tools.length} 个可用工具（workspace ${tools.filter((toolEntry) => toolEntry.category === "workspace").length} / mcp ${tools.filter((toolEntry) => toolEntry.category === "mcp").length}）`,
         };
       },

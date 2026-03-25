@@ -1,6 +1,14 @@
 export type ToolCategory = "structured" | "workspace" | "execution" | "interaction" | "mcp";
 export type ToolRiskLevel = "safe" | "caution" | "sensitive";
-export type ToolRendererKind = "structured" | "terminal" | "catalog";
+export type ToolRendererKind = "structured" | "terminal" | "catalog" | "mcp";
+
+export type McpToolRegistryMeta = {
+  serverId: string;
+  serverLabel: string;
+  transport: "http" | "sse" | "stdio";
+  mode: "proxy" | "native";
+  sourceToolName?: string;
+};
 
 export type ToolRegistryItem = {
   name: string;
@@ -12,6 +20,7 @@ export type ToolRegistryItem = {
   preferredOrder: number;
   supportsApproval: boolean;
   rendererKind: ToolRendererKind;
+  mcp?: McpToolRegistryMeta;
 };
 
 export type AvailableToolDescriptor = {
@@ -96,6 +105,17 @@ export const toolRegistry: ToolRegistryItem[] = [
     rendererKind: "structured",
   },
   {
+    name: "fetch_url",
+    title: "网页抓取",
+    category: "workspace",
+    description: "抓取网页并转成适合阅读的 Markdown 文本。",
+    usageHint: "用户贴了 URL、文档页或竞品页面时优先使用，而不是手写 curl。",
+    riskLevel: "safe",
+    preferredOrder: 45,
+    supportsApproval: false,
+    rendererKind: "structured",
+  },
+  {
     name: "writeFile",
     title: "写入文件",
     category: "execution",
@@ -136,8 +156,10 @@ export function getToolRegistryItem(toolName: string): ToolRegistryItem | undefi
   return toolRegistryByName.get(toolName);
 }
 
-export function getAvailableToolsResult(extraItems: ToolRegistryItem[] = []): AvailableToolsResult {
-  const allItems = [...toolRegistry, ...extraItems];
+export function buildAvailableToolsResult(items: ToolRegistryItem[]): AvailableToolsResult {
+  const allItems = Array.from(
+    new Map(items.map((tool) => [tool.name, tool] as const)).values(),
+  );
   const groups = allItems
     .sort((left, right) => left.preferredOrder - right.preferredOrder)
     .reduce<Record<ToolCategory, AvailableToolDescriptor[]>>(
@@ -171,4 +193,8 @@ export function getAvailableToolsResult(extraItems: ToolRegistryItem[] = []): Av
     })),
     summary: "已按类别整理当前工具，并标记推荐顺序与风险级别。",
   };
+}
+
+export function getAvailableToolsResult(extraItems: ToolRegistryItem[] = []): AvailableToolsResult {
+  return buildAvailableToolsResult([...toolRegistry, ...extraItems]);
 }
