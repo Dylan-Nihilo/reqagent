@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAui } from "@assistant-ui/store";
 import { useAuiState } from "@assistant-ui/store";
 import { useThread } from "@assistant-ui/react";
+import { ReqBrandMark } from "@/components/ReqBrandMark";
+import { ReqChatIcon, ReqPlusIcon, ReqTrashIcon } from "@/components/ReqIcons";
 import styles from "@/components/ReqNavDrawer.module.css";
 import { DEFAULT_THREAD_TITLE, type ReqAgentThreadRecord } from "@/lib/threads";
 
@@ -17,47 +19,6 @@ type ReqNavDrawerProps = {
   onNewThread?: () => void;
   onSwitchThread?: () => void;
 };
-
-function CollapseExpandIcon({ expanded = false }: { expanded?: boolean }) {
-  // expanded=true means sidebar is open → show left arrow (to collapse)
-  // expanded=false means sidebar is collapsed → show right arrow (to expand)
-  return (
-    <svg
-      width="16" height="16" viewBox="0 0 16 16"
-      fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"
-      style={{ transition: "transform 280ms cubic-bezier(0.16,1,0.3,1)" }}
-    >
-      <path d={expanded ? "M10 4L6 8l4 4" : "M6 4l4 4-4 4"} />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-      <path d="M7 2v10M2 7h10" />
-    </svg>
-  );
-}
-
-function ChatIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 3h12v8H9l-3 3v-3H2z" />
-    </svg>
-  );
-}
-
-function TrashIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2.5 3.5h9" />
-      <path d="M5.5 2h3" />
-      <path d="M4 5v5.5M7 5v5.5M10 5v5.5" />
-      <path d="M3.5 3.5 4 12h6l.5-8.5" />
-    </svg>
-  );
-}
 
 type ThreadGroup = {
   label: string;
@@ -182,7 +143,7 @@ function ReqNavDrawerRuntime({
     >
       <div className={styles.primaryActions}>
         <button className={styles.primaryButton} onClick={() => void handleNewThread()} type="button">
-          <span className={styles.primaryIcon} aria-hidden="true"><PlusIcon /></span>
+          <span className={styles.primaryIcon} aria-hidden="true"><ReqPlusIcon /></span>
           <span className={styles.primaryLabel}>新建对话</span>
         </button>
       </div>
@@ -193,7 +154,7 @@ function ReqNavDrawerRuntime({
             {!collapsed ? <p className={styles.groupLabel}>当前草稿</p> : null}
             <button className={[styles.threadRow, styles.active].join(" ")} type="button">
               {collapsed ? (
-                <ChatIcon className={styles.threadIcon} />
+                <ReqChatIcon className={styles.threadIcon} />
               ) : (
                 <>
                   <span className={styles.threadAccent} aria-hidden="true" />
@@ -220,7 +181,7 @@ function ReqNavDrawerRuntime({
                     type="button"
                   >
                     {collapsed ? (
-                      <ChatIcon className={styles.threadIcon} />
+                      <ReqChatIcon className={styles.threadIcon} />
                     ) : (
                       <>
                         <span className={styles.threadAccent} aria-hidden="true" />
@@ -241,7 +202,7 @@ function ReqNavDrawerRuntime({
                       }}
                       type="button"
                     >
-                      <TrashIcon />
+                      <ReqTrashIcon />
                     </button>
                   ) : null}
                 </div>
@@ -260,7 +221,9 @@ function ReqNavDrawerRuntime({
           <>
             <p className={styles.agentLabel}>当前 Agent</p>
             <div className={styles.agentCard}>
-              <span className={styles.agentMonogram}>R</span>
+              <span className={styles.agentMonogram}>
+                <ReqBrandMark className={styles.agentGlyph} />
+              </span>
               <div className={styles.agentCopy}>
                 <p className={styles.agentName}>{currentAgent}</p>
                 <p className={styles.agentHint}>{hint}</p>
@@ -269,7 +232,7 @@ function ReqNavDrawerRuntime({
           </>
         ) : (
           <div className={styles.agentMini} title={currentAgent}>
-            R
+            <ReqBrandMark className={styles.agentGlyph} />
           </div>
         )}
       </div>
@@ -290,7 +253,7 @@ function ReqNavDrawerStatic({
     >
       <div className={styles.primaryActions}>
         <button className={styles.primaryButton} type="button">
-          <span className={styles.primaryIcon} aria-hidden="true"><PlusIcon /></span>
+          <span className={styles.primaryIcon} aria-hidden="true"><ReqPlusIcon /></span>
           <span className={styles.primaryLabel}>新建对话</span>
         </button>
       </div>
@@ -299,7 +262,7 @@ function ReqNavDrawerStatic({
         {!collapsed ? <p className={styles.sectionLabel}>当前会话</p> : null}
         <button className={styles.threadRow} type="button">
           {collapsed ? (
-            <ChatIcon className={styles.threadIcon} />
+            <ReqChatIcon className={styles.threadIcon} />
           ) : (
             <>
               <span className={styles.threadAccent} aria-hidden="true" />
@@ -317,7 +280,9 @@ function ReqNavDrawerStatic({
           <>
             <p className={styles.agentLabel}>当前 Agent</p>
             <div className={styles.agentCard}>
-              <span className={styles.agentMonogram}>R</span>
+              <span className={styles.agentMonogram}>
+                <ReqBrandMark className={styles.agentGlyph} />
+              </span>
               <div className={styles.agentCopy}>
                 <p className={styles.agentName}>{currentAgent}</p>
                 <p className={styles.agentHint}>{hint}</p>
@@ -326,7 +291,7 @@ function ReqNavDrawerStatic({
           </>
         ) : (
           <div className={styles.agentMini} title={currentAgent}>
-            R
+            <ReqBrandMark className={styles.agentGlyph} />
           </div>
         )}
       </div>

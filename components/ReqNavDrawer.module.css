@@ -142,6 +142,12 @@
   height: 16px;
 }
 
+.primaryIcon svg,
+.threadIcon svg {
+  width: 100%;
+  height: 100%;
+}
+
 .primaryLabel {
   white-space: nowrap;
   overflow: hidden;
@@ -274,6 +280,8 @@
   display: none;
   color: var(--ra-text-2);
   flex-shrink: 0;
+  width: 16px;
+  height: 16px;
 }
 
 .sidebarCollapsed .threadIcon {
@@ -378,14 +386,14 @@
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  background: var(--ra-text-1);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
+  border: 1px solid color-mix(in oklch, var(--ra-text-1) 10%, transparent);
+  background: color-mix(in oklch, var(--ra-surface) 94%, white 6%);
+  color: var(--ra-text-1);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  box-shadow: var(--ra-shadow-sm);
 }
 
 .agentCopy {
@@ -416,12 +424,17 @@
   width: 34px;
   height: 34px;
   border-radius: 9px;
-  background: var(--ra-text-1);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
+  border: 1px solid color-mix(in oklch, var(--ra-text-1) 10%, transparent);
+  background: color-mix(in oklch, var(--ra-surface) 94%, white 6%);
+  color: var(--ra-text-1);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  box-shadow: var(--ra-shadow-sm);
+}
+
+.agentGlyph {
+  width: 15px;
+  height: 15px;
 }

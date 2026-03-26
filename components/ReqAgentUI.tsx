@@ -17,6 +17,14 @@ import { ReqScrollToBottom } from "@/components/ReqScrollToBottom";
 import { useCallback, useEffect, useState } from "react";
 import { ReqNavDrawer } from "@/components/ReqNavDrawer";
 import { ReqBrandMark } from "@/components/ReqBrandMark";
+import {
+  ReqArtifactsIcon,
+  ReqGalleryIcon,
+  ReqHistoryIcon,
+  ReqSettingsIcon,
+  ReqSidebarIcon,
+} from "@/components/ReqIcons";
+import { ReqModelBadge } from "@/components/ReqModelBadge";
 import { ReqSkillLoadedChips } from "@/components/ReqSkillLoadedChips";
 import { ReqSkillSelector } from "@/components/ReqSkillSelector";
 import { userPartComponents, assistantPartComponents } from "@/lib/part-registry";
@@ -109,12 +117,12 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
               }}
               type="button"
             >
-              <HistoryIcon className={styles.ghostBtnIcon} />
-              历史对话
+              <ReqHistoryIcon className={styles.ghostBtnIcon} />
+              <span className={styles.ghostBtnLabel}>历史对话</span>
             </button>
             <a className={styles.ghostBtn} href="/gallery">
-              <GalleryIcon className={styles.ghostBtnIcon} />
-              Gallery
+              <ReqGalleryIcon className={styles.ghostBtnIcon} />
+              <span className={styles.ghostBtnLabel}>Gallery</span>
             </a>
             <button
               className={styles.ghostBtn}
@@ -124,8 +132,8 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
               }}
               type="button"
             >
-              <SettingsIcon className={styles.ghostBtnIcon} />
-              设置
+              <ReqSettingsIcon className={styles.ghostBtnIcon} />
+              <span className={styles.ghostBtnLabel}>设置</span>
             </button>
           </div>
 
@@ -140,10 +148,14 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
 
           <div className={styles.landingStage}>
             <div className={styles.landingCenter}>
+              <div className={styles.heroIcon}>
+                <ReqBrandMark className={styles.heroIconSvg} />
+              </div>
+
               <div className={styles.titleBlock}>
                 <h1 className={styles.title}>ReqAgent</h1>
                 <p className={styles.subtitle}>
-                  把模糊的想法变成可执行的需求
+                  把模糊输入压成结构化需求、用户故事和可交付文档。
                 </p>
               </div>
 
@@ -190,7 +202,10 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
             <div className={styles.topBarInner}>
               <div className={styles.topBarGroup}>
                 <a className={styles.topBarBrand} href="/">
-                  <div className={styles.logoMark}>ReqAgent</div>
+                  <div className={styles.logoMark}>
+                    <ReqBrandMark className={styles.logoMarkSvg} />
+                  </div>
+                  <span className={styles.logoText}>ReqAgent</span>
                 </a>
                 <button
                   className={styles.ghostBtn}
@@ -198,7 +213,7 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
                   type="button"
                   aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
                 >
-                  <SessionIcon className={styles.ghostBtnIcon} />
+                  <ReqSidebarIcon className={styles.ghostBtnIcon} />
                 </button>
               </div>
 
@@ -212,20 +227,22 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
                   onClick={() => setArtifactsCollapsed((v) => !v)}
                   type="button"
                 >
-                  <ArtifactIcon className={styles.ghostBtnIcon} />
-                  产物{hasArtifacts ? ` ${artifactCount}` : ""}
+                  <ReqArtifactsIcon className={styles.ghostBtnIcon} />
+                  <span className={styles.ghostBtnLabel}>
+                    产物{hasArtifacts ? ` ${artifactCount}` : ""}
+                  </span>
                 </button>
                 <a className={styles.ghostBtn} href="/gallery">
-                  <GalleryIcon className={styles.ghostBtnIcon} />
-                  Gallery
+                  <ReqGalleryIcon className={styles.ghostBtnIcon} />
+                  <span className={styles.ghostBtnLabel}>Gallery</span>
                 </a>
                 <button
                   className={styles.ghostBtn}
                   onClick={() => setShowSettings(true)}
                   type="button"
                 >
-                  <SettingsIcon className={styles.ghostBtnIcon} />
-                  设置
+                  <ReqSettingsIcon className={styles.ghostBtnIcon} />
+                  <span className={styles.ghostBtnLabel}>设置</span>
                 </button>
               </div>
             </div>
@@ -357,7 +374,15 @@ function AssistantMessage() {
   return (
     <MessagePrimitive.Root>
       <ReqMessage
-        meta={meta?.model}
+        meta={
+          meta?.model ? (
+            <ReqModelBadge
+              model={meta.model}
+              providerName={meta.providerName}
+              wireApi={meta.wireApi}
+            />
+          ) : undefined
+        }
         role="assistant"
         signals={buildAssistantSignals({ timing })}
         status={visualStatus}
@@ -545,50 +570,3 @@ const sampleLoadedSkills: ReqAgentLoadedSkillMeta[] = [
   { id: "cap-mermaid", name: "Mermaid 图表", type: "capability" },
 ];
 
-// SVG assets
-function HistoryIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 16 16">
-      <circle cx="8" cy="8.5" r="5.5" />
-      <path d="M8 5.5v3l2 1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M2.5 3V5.5H5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function SessionIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 16 16">
-      <path d="M2 4h12M2 8h8M2 12h10" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function GalleryIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 16 16">
-      <rect height="5" rx="1" width="5" x="1.5" y="1.5" />
-      <rect height="5" rx="1" width="5" x="9.5" y="1.5" />
-      <rect height="5" rx="1" width="5" x="1.5" y="9.5" />
-      <rect height="5" rx="1" width="5" x="9.5" y="9.5" />
-    </svg>
-  );
-}
-
-function SettingsIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 16 16">
-      <circle cx="8" cy="8" r="2.5" />
-      <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" />
-    </svg>
-  );
-}
-
-function ArtifactIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 16 16">
-      <path d="M3 3.5h10M3 8h10M3 12.5h6" strokeLinecap="round" />
-      <path d="M11.5 10.5 14 13l-2.5 2.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}

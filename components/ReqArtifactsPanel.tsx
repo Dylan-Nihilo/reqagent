@@ -2,7 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ReqMessageMarkdownPreview } from "@/components/message-ui/ReqMessageUI";
-import type { ReqArtifactItem, ReqPendingArtifact } from "@/lib/use-artifacts";
+import {
+  ReqArtifactKindIcon,
+  ReqArrowLeftIcon,
+  ReqArrowRightIcon,
+  ReqCloseIcon,
+  ReqCopyIcon,
+  ReqDownloadIcon,
+} from "@/components/ReqIcons";
+import type { ReqArtifactIconName, ReqArtifactItem, ReqPendingArtifact } from "@/lib/use-artifacts";
 import styles from "@/components/ReqArtifactsPanel.module.css";
 
 type ReqArtifactsPanelProps = {
@@ -71,8 +79,8 @@ export function ReqArtifactsPanel({ items, pending, onClose }: ReqArtifactsPanel
           <div className={styles.header}>
             <div className={styles.headerLeft}>
               <button className={styles.backButton} onClick={() => setSelectedId(null)} type="button">
-                <span aria-hidden="true">←</span>
-                返回
+                <ReqArrowLeftIcon className={styles.buttonIcon} />
+                <span>返回</span>
               </button>
               <div className={styles.headerCopy}>
                 <p className={styles.title}>{selected.label}</p>
@@ -81,7 +89,7 @@ export function ReqArtifactsPanel({ items, pending, onClose }: ReqArtifactsPanel
             </div>
             {onClose ? (
               <button aria-label="收起产物面板" className={styles.iconButton} onClick={onClose} type="button">
-                ×
+                <ReqCloseIcon className={styles.buttonIcon} />
               </button>
             ) : null}
           </div>
@@ -94,10 +102,12 @@ export function ReqArtifactsPanel({ items, pending, onClose }: ReqArtifactsPanel
 
           <div className={styles.actions}>
             <button className={styles.actionButton} onClick={handleCopy} type="button">
-              复制
+              <ReqCopyIcon className={styles.buttonIcon} />
+              <span>复制</span>
             </button>
             <button className={styles.actionButton} onClick={handleExport} type="button">
-              {selected?.downloadUrl ? "下载 DOCX" : "导出 Markdown"}
+              <ReqDownloadIcon className={styles.buttonIcon} />
+              <span>{selected?.downloadUrl ? "下载 DOCX" : "导出 Markdown"}</span>
             </button>
           </div>
 
@@ -117,7 +127,7 @@ export function ReqArtifactsPanel({ items, pending, onClose }: ReqArtifactsPanel
             </div>
             {onClose ? (
               <button aria-label="收起产物面板" className={styles.iconButton} onClick={onClose} type="button">
-                ×
+                <ReqCloseIcon className={styles.buttonIcon} />
               </button>
             ) : null}
           </div>
@@ -131,11 +141,15 @@ export function ReqArtifactsPanel({ items, pending, onClose }: ReqArtifactsPanel
                 type="button"
               >
                 <span className={styles.itemAccent} aria-hidden="true" />
-                <span className={styles.itemIcon} aria-hidden="true">{item.icon}</span>
+                <span className={styles.itemIcon} aria-hidden="true">
+                  <ArtifactIcon icon={item.icon} />
+                </span>
                 <span className={styles.itemBody}>
                   <span className={styles.itemLabelRow}>
                     <span className={styles.itemLabel}>{item.label}</span>
-                    <span className={styles.itemArrow} aria-hidden="true">→</span>
+                    <span className={styles.itemArrow} aria-hidden="true">
+                      <ReqArrowRightIcon className={styles.itemArrowIcon} />
+                    </span>
                   </span>
                   <span className={styles.itemSummary}>{item.summary}</span>
                   <span className={styles.itemMeta}>{item.meta}</span>
@@ -146,7 +160,9 @@ export function ReqArtifactsPanel({ items, pending, onClose }: ReqArtifactsPanel
             {pending ? (
               <div className={`${styles.item} ${styles.itemPending}`}>
                 <span className={styles.itemAccent} aria-hidden="true" />
-                <span className={styles.itemIcon} aria-hidden="true">{pending.icon}</span>
+                <span className={styles.itemIcon} aria-hidden="true">
+                  <ArtifactIcon icon={pending.icon} />
+                </span>
                 <span className={styles.itemBody}>
                   <span className={styles.itemLabelRow}>
                     <span className={styles.itemLabel}>{pending.label}</span>
@@ -165,4 +181,8 @@ export function ReqArtifactsPanel({ items, pending, onClose }: ReqArtifactsPanel
       )}
     </section>
   );
+}
+
+function ArtifactIcon({ icon }: { icon: ReqArtifactIconName }) {
+  return <ReqArtifactKindIcon className={styles.itemGlyph} kind={icon} />;
 }

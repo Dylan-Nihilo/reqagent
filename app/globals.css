@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 :root {
@@ -71,8 +71,10 @@
   --reqagent-failed:        var(--ra-err);
   --reqagent-failed-soft:   var(--ra-err-soft);
   --reqagent-failed-line:   var(--ra-err-line);
+  --ra-font-sans:
+    "Manrope", "SF Pro Display", "Helvetica Neue", "Segoe UI", sans-serif;
   --reqagent-mono:
-    "Geist Mono", "SFMono-Regular", "SF Mono", "JetBrains Mono", "Menlo", monospace;
+    "IBM Plex Mono", "SFMono-Regular", "SF Mono", "JetBrains Mono", "Menlo", monospace;
 
   /* === Spacing & Radius === */
   --ra-radius-sm:   6px;
@@ -115,7 +117,7 @@ body {
   margin: 0;
   background: var(--ra-bg);
   color: var(--ra-text-1);
-  font-family: "Geist", "Helvetica Neue", "Segoe UI", sans-serif;
+  font-family: var(--ra-font-sans);
   font-size: 14px;
   line-height: 1.6;
   text-rendering: optimizeLegibility;

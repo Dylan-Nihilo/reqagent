@@ -311,6 +311,7 @@ export type ReqAgentMessageMeta = {
   phaseLabel: string;
   publicThinking: string;
   model?: string;
+  providerName?: ReqAgentProviderInfo["providerName"];
   wireApi?: ReqAgentProviderInfo["wireApi"];
   toolInvocationStates?: Record<string, ToolInvocationViewState>;
   debug?: ReqAgentDebugMeta;

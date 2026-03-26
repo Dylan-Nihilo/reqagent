@@ -60,7 +60,7 @@ type ReqMessageFrameProps = {
   status?: ReqMessageVisualStatus;
   title?: string;
   monogram?: string;
-  meta?: string;
+  meta?: ReactNode;
   branchLabel?: string;
   isRetry?: boolean;
   signals?: string[];
@@ -158,7 +158,7 @@ export function ReqMessageFrame({
           </div>
           {hasHeadMeta ? (
             <div className={styles.messageHeadMeta}>
-              {meta ? <span className={styles.messageMeta}>{meta}</span> : null}
+              {meta ? <div className={styles.messageMeta}>{meta}</div> : null}
               {showStatusPill ? (
                 <span className={styles.statusPill}>
                   <StatusGlyph status={status} />

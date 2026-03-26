@@ -5,11 +5,12 @@ import { useThread } from "@assistant-ui/react";
 import { parseToolArgsText } from "@/lib/types";
 
 export type ReqArtifactKind = "brief" | "stories" | "document" | "knowledge";
+export type ReqArtifactIconName = "brief" | "stories" | "document" | "knowledge" | "docx";
 
 export type ReqArtifactItem = {
   id: string;
   kind: ReqArtifactKind;
-  icon: string;
+  icon: ReqArtifactIconName;
   label: string;
   summary: string;
   meta: string;
@@ -24,7 +25,7 @@ export type ReqArtifactItem = {
 export type ReqPendingArtifact = {
   id: string;
   kind: ReqArtifactKind;
-  icon: string;
+  icon: ReqArtifactIconName;
   label: string;
   summary: string;
   toolName: string;
@@ -167,7 +168,7 @@ function buildPendingArtifact({
       return {
         id: `pending:${toolCallId}`,
         kind: "brief",
-        icon: "◈",
+        icon: "brief",
         label: "需求分析",
         summary: "正在提炼需求结构…",
         toolName,
@@ -177,7 +178,7 @@ function buildPendingArtifact({
       return {
         id: `pending:${toolCallId}`,
         kind: "stories",
-        icon: "≡",
+        icon: "stories",
         label: "用户故事",
         summary: "正在拆解用户故事…",
         toolName,
@@ -187,7 +188,7 @@ function buildPendingArtifact({
       return {
         id: `pending:${toolCallId}`,
         kind: "document",
-        icon: "⊡",
+        icon: "document",
         label: "需求文档",
         summary: "正在生成文档…",
         toolName,
@@ -198,7 +199,7 @@ function buildPendingArtifact({
       return {
         id: `pending:${toolCallId}`,
         kind: "document",
-        icon: "⊡",
+        icon: "document",
         label: targetPath.includes("requirements") ? "需求文档" : fileNameFromPath(targetPath),
         summary: `正在写入 ${targetPath}…`,
         toolName,
@@ -208,7 +209,7 @@ function buildPendingArtifact({
       return {
         id: `pending:${toolCallId}`,
         kind: "document",
-        icon: "⊞",
+        icon: "docx",
         label: "DOCX 文档",
         summary: "正在生成 DOCX 文档…",
         toolName,
@@ -217,7 +218,7 @@ function buildPendingArtifact({
       return {
         id: `pending:${toolCallId}`,
         kind: "knowledge",
-        icon: "◎",
+        icon: "knowledge",
         label: "读取模板",
         summary: "正在解析 DOCX 文件…",
         toolName,
@@ -227,7 +228,7 @@ function buildPendingArtifact({
       return {
         id: `pending:${toolCallId}`,
         kind: "knowledge",
-        icon: "◎",
+        icon: "knowledge",
         label: "知识参考",
         summary: "正在整理参考资料…",
         toolName,
@@ -253,7 +254,7 @@ function buildBriefArtifact(
   return {
     id: "artifact:brief",
     kind: "brief",
-    icon: "◈",
+    icon: "brief",
     label: "需求分析",
     summary: projectName,
     meta: `${users.length} 类用户 · ${features.length} 项核心功能`,
@@ -296,7 +297,7 @@ function buildStoriesArtifact(
   return {
     id: "artifact:stories",
     kind: "stories",
-    icon: "≡",
+    icon: "stories",
     label: "用户故事",
     summary: projectName,
     meta: `${formatCount(total)} 条 · must ${must} / should ${should}`,
@@ -341,7 +342,7 @@ function buildDocumentArtifactFromOutput(
   return {
     id: "artifact:document",
     kind: "document",
-    icon: "⊡",
+    icon: "document",
     label: "需求文档",
     summary: projectName,
     meta: `${formatCount(charCount)} chars · Markdown`,
@@ -372,7 +373,7 @@ function buildDocumentArtifactFromWrite(
   return {
     id: `artifact:document:${targetPath}`,
     kind: "document",
-    icon: "⊡",
+    icon: "document",
     label: title,
     summary: headingFromMarkdown(content) || targetPath,
     meta: `${formatCount(charCount)} chars · ${targetPath}`,
@@ -398,7 +399,7 @@ function buildDocumentArtifactFromRead(
   return {
     id: `artifact:document:${targetPath}`,
     kind: "document",
-    icon: "⊡",
+    icon: "document",
     label: targetPath.includes("requirements") ? "需求文档" : fileNameFromPath(targetPath),
     summary: headingFromMarkdown(content) || targetPath,
     meta: `${formatCount(normalizeNumber(output.charCount) ?? content.length)} chars · ${targetPath}`,
@@ -426,7 +427,7 @@ function buildKnowledgeArtifact(
   return {
     id: `artifact:knowledge:${toolCallId}`,
     kind: "knowledge",
-    icon: "◎",
+    icon: "knowledge",
     label: "知识参考",
     summary: source,
     meta: relevance !== null ? `relevance ${relevance.toFixed(2)} · ${source}` : source,
@@ -463,7 +464,7 @@ function buildFetchedReferenceArtifact(
   return {
     id: `artifact:knowledge:${url}`,
     kind: "knowledge",
-    icon: "◎",
+    icon: "knowledge",
     label: "知识参考",
     summary: host,
     meta: `${formatCount(normalizeNumber(output.charCount) ?? content.length)} chars · ${host}`,
@@ -498,7 +499,7 @@ function buildDocxExportArtifact(
   return {
     id: `artifact:docx:${toolCallId}`,
     kind: "document",
-    icon: "⊞",
+    icon: "docx",
     label: "DOCX 文档",
     summary: title,
     meta: sizeBytes !== null
@@ -530,7 +531,7 @@ function buildDocxParseArtifact(
   return {
     id: `artifact:knowledge:${toolCallId}`,
     kind: "knowledge",
-    icon: "◎",
+    icon: "knowledge",
     label: "模板结构",
     summary: fileNameFromPath(targetPath),
     meta: charCount !== null

@@ -101,6 +101,7 @@ export function buildMetadataHandler(params: {
           steps: isMilestone ? [...debugSteps] : undefined,
         },
         model: params.providerInfo.model,
+        providerName: params.providerInfo.providerName,
         publicThinking: "",
         toolInvocationStates: { ...params.toolInvocationStates },
         wireApi: params.providerInfo.wireApi,

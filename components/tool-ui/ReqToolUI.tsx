@@ -723,7 +723,7 @@ function ToolShell({
   const hasRawDetails = Boolean(formattedInput || formattedOutput || formattedDebug);
   const hasDescription = Boolean(description && description !== summary);
   const hasPanel = Boolean(extra || hasRawDetails || hasDescription);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(state === "awaiting_approval");
   const [rawOpen, setRawOpen] = useState(false);
 
   // Auto-expand when approval is needed (state may transition after mount)
@@ -731,7 +731,7 @@ function ToolShell({
   useEffect(() => {
     if (prevState.current !== state && state === "awaiting_approval") {
       setExpanded(true);
-      setRawOpen(true);
+      setRawOpen(false);
     }
     prevState.current = state;
   }, [state]);
@@ -808,7 +808,7 @@ function ToolShell({
                     onClick={() => setRawOpen((value) => !value)}
                     type="button"
                   >
-                    {rawOpen ? "收起 input / output / debug" : "查看 input / output / debug"}
+                    {rawOpen ? "收起原始 input / output / debug" : "查看原始 input / output / debug"}
                   </button>
 
                   <div className={joinClasses(styles.rawPanelShell, rawOpen ? styles.rawPanelShellOpen : "")}>

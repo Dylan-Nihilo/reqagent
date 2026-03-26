@@ -15,7 +15,7 @@ type ReqMessageProps = {
   className?: string;
   status?: ReqMessageVisualStatus;
   title?: string;
-  meta?: string;
+  meta?: ReactNode;
   branchLabel?: string;
   isRetry?: boolean;
   signals?: string[];

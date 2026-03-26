@@ -17,9 +17,9 @@
 /* ── Header ─────────────────────────────────── */
 
 .header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 12px;
   padding: 16px 16px 12px;
   border-bottom: 1px solid var(--ra-border-soft);
@@ -27,9 +27,10 @@
 
 .headerLeft {
   min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
 }
 
 .headerCopy {
@@ -49,6 +50,7 @@
   font-size: 0.6875rem;
   line-height: 1.5;
   color: var(--ra-text-3);
+  overflow-wrap: anywhere;
 }
 
 /* ── Badges & pills ─────────────────────────── */
@@ -73,12 +75,15 @@
   display: inline-flex;
   align-items: center;
   min-height: 22px;
+  max-width: 100%;
   padding: 0 8px;
   border-radius: 4px;
   font-size: 0.6875rem;
   color: var(--ra-text-3);
   background: color-mix(in srgb, var(--ra-text-1) 6%, transparent);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .feedbackPill {
@@ -93,6 +98,7 @@
 .actionButton {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   min-height: 28px;
   padding: 0 10px;
@@ -102,6 +108,8 @@
   color: var(--ra-text-2);
   font-size: 0.8125rem;
   cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
   transition:
     background 160ms ease,
     border-color 160ms ease,
@@ -119,7 +127,12 @@
 .iconButton {
   width: 28px;
   padding: 0;
-  justify-content: center;
+  flex-shrink: 0;
+}
+
+.buttonIcon {
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
 }
 
@@ -188,10 +201,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
   color: var(--ra-text-3);
   flex-shrink: 0;
-  margin-top: 1px;
+  margin-top: 2px;
+}
+
+.itemGlyph {
+  width: 18px;
+  height: 18px;
 }
 
 .itemBody {
@@ -207,6 +224,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
 }
 
 .itemLabel {
@@ -222,19 +240,25 @@
   font-size: 0.6875rem;
   color: var(--ra-text-2);
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .itemMeta {
   font-size: 0.6875rem;
   color: var(--ra-text-3);
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .itemArrow {
   color: var(--ra-text-3);
-  font-size: 0.75rem;
   flex-shrink: 0;
   transition: transform 160ms ease;
+}
+
+.itemArrowIcon {
+  width: 14px;
+  height: 14px;
 }
 
 .item:hover .itemArrow {
@@ -286,6 +310,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  min-width: 0;
   padding: 12px 16px 0;
 }
 
@@ -311,6 +336,7 @@
 
 .detailBody :global(.richText) {
   color: var(--ra-text-2);
+  overflow-wrap: anywhere;
 }
 
 .detailBody :global(.richText h1),
