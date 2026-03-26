@@ -1482,6 +1482,10 @@ export async function fillDocxTemplate(params: {
 
     documentXml = documentXml.replace(/\{\{[^{}]+\}\}/g, "");
 
+    // Clean up empty XML elements left behind by unfilled placeholders
+    documentXml = removeEmptyTableRows(documentXml);
+    documentXml = removeEmptyParagraphs(documentXml);
+
     await fs.writeFile(documentXmlPath, documentXml, "utf8");
     await fs.rm(params.outputPath, { force: true });
     await execa("zip", ["-qr", params.outputPath, "."], { cwd: tempDir });
