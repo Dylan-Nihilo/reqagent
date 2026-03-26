@@ -672,7 +672,16 @@ function getSectionBodyByCandidates(
   sections: MarkdownSection[],
   candidates: string[],
 ) {
-  return findSectionByCandidates(sections, candidates)?.body ?? "";
+  const section = findSectionByCandidates(sections, candidates);
+  if (!section) return "";
+  if (section.body.trim()) return section.body;
+  // Body is empty — the content lives in child sections (e.g. `## 业务概述` → `### 业务概述`).
+  // Merge descendant bodies so the caller gets the actual content.
+  const descendants = getDescendantSections(sections, section);
+  return descendants
+    .map((d) => d.body)
+    .filter(Boolean)
+    .join("\n");
 }
 
 function markdownLinesToPlainText(value: string) {
@@ -813,7 +822,12 @@ function findSectionByCandidates(
         score = 3;
       }
 
-      if (score > bestScore) {
+      // Prefer sections with non-empty body when scores are tied.
+      // This prevents matching an empty parent heading (e.g. `## 业务概述`)
+      // when a child heading with the same name has actual content.
+      const tieBreak =
+        score === bestScore && !bestMatch?.body?.trim() && section.body.trim();
+      if (score > bestScore || tieBreak) {
         bestScore = score;
         bestMatch = section;
       }
@@ -1048,10 +1062,11 @@ function findFeatureSections(sections: MarkdownSection[]) {
       ]),
     );
 
-    return (
-      /业务功能|功能项|管理|流程|报表|系统|核查|引擎|通知|档案/.test(featureName) &&
-      (hasStructuredChildren || hasLabeledBlocks)
-    );
+    // Rely on structural detection: if a section has structured children
+    // (业务流程, 业务规则, 输入/输出要素, etc.), it IS a feature section.
+    // No name-based keyword check — this avoids missing features like
+    // "投诉工单创建" that don't contain keywords like "管理" or "流程".
+    return hasStructuredChildren || hasLabeledBlocks;
   });
 }
 
