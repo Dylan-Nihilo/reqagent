@@ -1408,6 +1408,60 @@ export function removeEmptyTableRows(xml: string) {
   });
 }
 
+/**
+ * Remove empty <w:p> paragraphs that contain no visible text.
+ * Preserves structural paragraphs: page/section breaks, field codes,
+ * images (both DrawingML and VML), and paragraphs inside table cells
+ * (OOXML requires at least one <w:p> per <w:tc>).
+ *
+ * Strategy: instead of splitting on <w:tc> (fragile with nested tables),
+ * we first collect all byte ranges occupied by <w:tbl> blocks, then only
+ * remove <w:p> elements whose start position falls OUTSIDE any table.
+ * This avoids the split-parity bug and nested-table corruption.
+ */
+export function removeEmptyParagraphs(xml: string) {
+  // 1. Collect all top-level <w:tbl>...</w:tbl> ranges using a depth stack
+  const tableRanges: Array<[number, number]> = [];
+  const tagRegex = /<(\/?)w:tbl\b[^>]*>/g;
+  let depth = 0;
+  let rangeStart = 0;
+  let tagMatch: RegExpExecArray | null;
+  while ((tagMatch = tagRegex.exec(xml)) !== null) {
+    if (!tagMatch[1]) {
+      if (depth === 0) rangeStart = tagMatch.index;
+      depth += 1;
+    } else {
+      depth -= 1;
+      if (depth === 0) {
+        tableRanges.push([rangeStart, tagMatch.index + tagMatch[0].length]);
+      }
+    }
+  }
+
+  function isInsideTable(position: number) {
+    return tableRanges.some(([start, end]) => position >= start && position < end);
+  }
+
+  // 2. Replace empty <w:p> outside tables
+  return xml.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (para, offset) => {
+    // Never touch paragraphs inside tables (cell structure depends on them)
+    if (isInsideTable(offset)) return para;
+    // Keep if it has visible text
+    if (/<w:t[\s>]/.test(para)) return para;
+    // Keep if it has a page or section break
+    if (/w:br\s+w:type="page"/.test(para)) return para;
+    if (/<w:sectPr/.test(para)) return para;
+    // Keep if it has field codes (TOC, PAGEREF, etc.)
+    if (/<w:fldChar/.test(para)) return para;
+    if (/<w:instrText/.test(para)) return para;
+    // Keep if it has DrawingML or VML image content
+    if (/<w:drawing/.test(para)) return para;
+    if (/<w:pict/.test(para)) return para;
+    // Otherwise remove
+    return "";
+  });
+}
+
 export async function fillDocxTemplate(params: {
   templatePath: string;
   outputPath: string;

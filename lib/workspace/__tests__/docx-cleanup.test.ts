@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { removeEmptyTableRows } from "../docx-support";
+import { removeEmptyParagraphs } from "../docx-support";
 
 describe("removeEmptyTableRows", () => {
   it("removes rows where all cells are empty", () => {
@@ -54,5 +55,58 @@ describe("removeEmptyTableRows", () => {
     expect(result).toContain("A");
     expect(result).toContain("B");
     expect((result.match(/<w:tr/g) ?? []).length).toBe(2);
+  });
+});
+
+describe("removeEmptyParagraphs", () => {
+  it("removes paragraphs with no text", () => {
+    const xml = [
+      '<w:p><w:pPr><w:pStyle w:val="a"/></w:pPr></w:p>',
+      '<w:p><w:r><w:t>Keep me</w:t></w:r></w:p>',
+      '<w:p><w:pPr/></w:p>',
+    ].join("");
+    const result = removeEmptyParagraphs(xml);
+    expect(result).toContain("Keep me");
+    expect((result.match(/<w:p[\s>]/g) ?? []).length).toBe(1);
+  });
+
+  it("preserves paragraphs with page breaks", () => {
+    const xml = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+    const result = removeEmptyParagraphs(xml);
+    expect(result).toContain("w:br");
+  });
+
+  it("preserves paragraphs with section breaks", () => {
+    const xml = '<w:p><w:pPr><w:sectPr/></w:pPr></w:p>';
+    const result = removeEmptyParagraphs(xml);
+    expect(result).toContain("w:sectPr");
+  });
+
+  it("preserves paragraphs with field codes (TOC, PAGEREF)", () => {
+    const xml = '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r></w:p>';
+    const result = removeEmptyParagraphs(xml);
+    expect(result).toContain("w:fldChar");
+  });
+
+  it("preserves paragraphs inside table cells", () => {
+    const xml = '<w:tbl><w:tr><w:tc><w:p><w:pPr/></w:p></w:tc></w:tr></w:tbl>';
+    const result = removeEmptyParagraphs(xml);
+    expect(result).toContain("<w:p");
+  });
+
+  it("preserves paragraphs with VML images (<w:pict>)", () => {
+    const xml = '<w:p><w:r><w:pict><v:shape>img</v:shape></w:pict></w:r></w:p>';
+    const result = removeEmptyParagraphs(xml);
+    expect(result).toContain("w:pict");
+  });
+
+  it("preserves paragraphs inside nested tables", () => {
+    const xml = [
+      '<w:tbl><w:tr><w:tc>',
+      '<w:tbl><w:tr><w:tc><w:p><w:pPr/></w:p></w:tc></w:tr></w:tbl>',
+      '</w:tc></w:tr></w:tbl>',
+    ].join("");
+    const result = removeEmptyParagraphs(xml);
+    expect((result.match(/<w:p[\s>]/g) ?? []).length).toBe(1);
   });
 });
