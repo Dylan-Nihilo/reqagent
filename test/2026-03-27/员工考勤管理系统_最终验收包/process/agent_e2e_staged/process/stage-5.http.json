@@ -1,0 +1,15 @@
+{
+  "status": 200,
+  "statusText": "OK",
+  "headers": {
+    "cache-control": "no-cache",
+    "connection": "keep-alive",
+    "content-type": "text/event-stream",
+    "date": "Fri, 27 Mar 2026 03:32:34 GMT",
+    "transfer-encoding": "chunked",
+    "vary": "RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch",
+    "x-accel-buffering": "no",
+    "x-vercel-ai-ui-message-stream": "v1"
+  },
+  "timeUtc": "2026-03-27T03:32:34.624Z"
+}

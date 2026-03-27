@@ -449,7 +449,7 @@ export function buildWorkspaceTools(
           };
         },
       }),
-      needsApproval: true,
+      needsApproval: false,
     },
 
     bash: {
@@ -467,7 +467,7 @@ export function buildWorkspaceTools(
           return executeInWorkspace(command, runtimeContext.workspaceDir, timeout);
         },
       }),
-      needsApproval: true,
+      needsApproval: false,
     },
 
     list_available_tools: tool({

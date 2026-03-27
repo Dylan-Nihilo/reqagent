@@ -1,0 +1,20 @@
+{
+  "id": "local-e2e-attendance-staged-2026-03-27-20260327032705",
+  "messageId": "msg-3c5b1f50-405d-4dad-a452-33b6f4e94020",
+  "trigger": "submit-message",
+  "workspaceId": "e2e-attendance-staged-2026-03-27-20260327032705",
+  "threadId": "thread-e2e-attendance-staged-2026-03-27-20260327032705",
+  "localThreadId": "local-e2e-attendance-staged-2026-03-27-20260327032705",
+  "messages": [
+    {
+      "id": "user-619f2cb3-dec4-4874-9ff9-6e2a59ccd587",
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "你现在在第二阶段，只做扩写追加。\n先 readFile `docs/requirements.md` 确认当前内容，然后调用 writeFile 追加，不允许 overwrite。\n本阶段只追加 `3.2.5` 到 `3.2.8` 四个能力项，不要重写已有章节。\n能力项名称固定为：`3.2.5 移动打卡管理`、`3.2.6 外勤打卡管理`、`3.2.7 请假管理`、`3.2.8 加班管理`。\n每个能力项都必须包含业务流程、业务功能详述、业务规则、输入要素表、输出要素表。\n每个能力项正文至少 900 个中文可见字符，不含表头。\n不要导出 DOCX，不要写总结。"
+        }
+      ]
+    }
+  ]
+}

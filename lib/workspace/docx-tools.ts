@@ -2,56 +2,20 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { tool, jsonSchema } from "ai";
 import { execa } from "execa";
-import { marked } from "marked";
 import type { RuntimeContext } from "@/lib/workspace/context";
 import { resolveWorkspacePath } from "@/lib/workspace/context";
+import {
+  analyzeDocxStructure,
+  buildDocxStructureMarkdown,
+  buildDocxTemplatePayload,
+  fillDocxTemplate,
+  loadMarkdownExportSource,
+  renderRequirementsDocHtml,
+} from "@/lib/workspace/docx-support";
 
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function wrapHtmlDocument(bodyHtml: string, title: string) {
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <title>${escapeHtml(title)}</title>
-  <style>
-    body {
-      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
-      color: #1f2937;
-      margin: 48px 56px;
-      line-height: 1.7;
-      font-size: 13px;
-    }
-    h1, h2, h3, h4 { color: #111827; }
-    h1 { font-size: 26px; text-align: center; margin-top: 48px; margin-bottom: 24px; }
-    h2 { margin-top: 32px; border-bottom: 1px solid #d1d5db; padding-bottom: 8px; font-size: 20px; }
-    h3 { margin-top: 20px; font-size: 16px; }
-    h4 { margin-top: 16px; font-size: 14px; }
-    table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; }
-    th, td { border: 1px solid #d1d5db; padding: 8px 10px; vertical-align: top; }
-    th { background: #f3f4f6; text-align: left; }
-    ul, ol { margin: 8px 0 16px 20px; }
-    code { background: #f3f4f6; padding: 2px 4px; border-radius: 3px; font-size: 12px; }
-    pre { background: #f3f4f6; padding: 12px; border-radius: 4px; overflow-x: auto; }
-    pre code { background: none; padding: 0; }
-    blockquote { border-left: 3px solid #d1d5db; margin: 12px 0; padding: 8px 16px; color: #6b7280; }
-  </style>
-</head>
-<body>
-${bodyHtml}
-</body>
-</html>`;
-}
 
 /**
  * Convert HTML to DOCX using macOS textutil.
@@ -81,8 +45,8 @@ export function buildDocxTools(runtimeContext: RuntimeContext) {
   return {
     parse_docx: tool({
       description:
-        "Read a .docx file and extract its text content and heading structure. " +
-        "Uses macOS textutil to convert docx to html, then extracts headings and text.",
+        "Read a .docx file and extract detailed structure including headings, " +
+        "tables, styles, TOC presence, and plain text content from OOXML.",
       inputSchema: jsonSchema<{ path: string }>({
         type: "object",
         properties: {
@@ -109,62 +73,64 @@ export function buildDocxTools(runtimeContext: RuntimeContext) {
           return { error: "Not a .docx file", path: targetPath };
         }
 
-        const tmpHtml = `${resolved}.tmp.html`;
         try {
-          // execa with array args — safe against shell injection
-          await execa("textutil", ["-convert", "html", "-output", tmpHtml, resolved]);
-          const htmlContent = await fs.readFile(tmpHtml, "utf8");
-
-          // Extract headings from HTML
-          const headingPattern = /<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi;
-          const headings: string[] = [];
-          let match: RegExpExecArray | null;
-          while ((match = headingPattern.exec(htmlContent)) !== null) {
-            const text = (match[1] ?? "").replace(/<[^>]*>/g, "").trim();
-            if (text) headings.push(text);
-          }
-
-          // Extract plain text by stripping tags
-          const textContent = htmlContent
-            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-            .replace(/<[^>]*>/g, " ")
-            .replace(/&nbsp;/g, " ")
-            .replace(/&amp;/g, "&")
-            .replace(/&lt;/g, "<")
-            .replace(/&gt;/g, ">")
-            .replace(/&quot;/g, '"')
-            .replace(/\s+/g, " ")
-            .trim();
+          const analysis = await analyzeDocxStructure(resolved);
+          const relativePath = path.relative(runtimeContext.workspaceDir, resolved).replace(/\\/g, "/");
 
           return {
-            path: path.relative(runtimeContext.workspaceDir, resolved).replace(/\\/g, "/"),
-            headings,
-            textContent: textContent.slice(0, 8000),
-            htmlContent: htmlContent.slice(0, 16000),
-            charCount: textContent.length,
+            path: relativePath,
+            title: analysis.title,
+            headings: analysis.headings.map((heading) => heading.text),
+            headingTree: analysis.headings,
+            tables: analysis.tables,
+            styles: analysis.styles,
+            hasToc: analysis.hasToc,
+            sectionCount: analysis.sectionCount,
+            paragraphCount: analysis.paragraphCount,
+            tableCount: analysis.tableCount,
+            textContent: analysis.textContent.slice(0, 8000),
+            charCount: analysis.charCount,
+            sectionCharCounts: analysis.sectionCharCounts,
+            relationIntegrity: analysis.relationIntegrity,
+            legacyContentHits: analysis.legacyContentHits,
+            structureMarkdown: buildDocxStructureMarkdown(path.basename(relativePath), analysis),
           };
         } catch (error) {
           return {
             error: error instanceof Error ? error.message : "Failed to parse docx",
             path: targetPath,
           };
-        } finally {
-          await fs.unlink(tmpHtml).catch(() => {});
         }
       },
     }),
 
     export_docx: tool({
       description:
-        "Export Markdown content as a .docx file. Converts markdown to HTML to docx " +
-        "using the marked library and macOS textutil. Returns the output path for download.",
-      inputSchema: jsonSchema<{ content: string; filename?: string }>({
+        "Export Markdown to .docx. Prefer passing sourcePath to a workspace markdown " +
+        "file instead of large inline content. Applies an enterprise-style requirements " +
+        "document shell with cover, change log, and TOC.",
+      inputSchema: jsonSchema<{
+        content?: string;
+        sourcePath?: string;
+        filename?: string;
+        title?: string;
+        organization?: string;
+        author?: string;
+        version?: string;
+        docDate?: string;
+        includeToc?: boolean;
+        templatePath?: string;
+        templateProfileId?: string;
+      }>({
         type: "object",
         properties: {
           content: {
             type: "string",
-            description: "Markdown content to export as .docx",
+            description: "Markdown content to export as .docx. Use sourcePath when possible.",
+          },
+          sourcePath: {
+            type: "string",
+            description: "Relative path to a markdown file in the workspace to export.",
           },
           filename: {
             type: "string",
@@ -172,11 +138,73 @@ export function buildDocxTools(runtimeContext: RuntimeContext) {
               "Output filename without extension (default: 'document'). " +
               "The .docx extension is added automatically.",
           },
+          title: {
+            type: "string",
+            description: "Document title shown on the cover page.",
+          },
+          organization: {
+            type: "string",
+            description: "Producing department or organization shown on the cover page.",
+          },
+          author: {
+            type: "string",
+            description: "Author name shown on the cover page.",
+          },
+          version: {
+            type: "string",
+            description: "Version string used on the cover and change log table.",
+          },
+          docDate: {
+            type: "string",
+            description: "Document date in YYYY/MM/DD format.",
+          },
+          includeToc: {
+            type: "boolean",
+            description: "Whether to include a generated directory page (default: true).",
+          },
+          templatePath: {
+            type: "string",
+            description:
+              "Optional relative path to a DOCX template containing placeholders like {{需求背景}}. " +
+              "When provided, export_docx fills the template instead of rendering from HTML.",
+          },
+          templateProfileId: {
+            type: "string",
+            description:
+              "Semantic DOCX template profile id. Defaults to user-requirements-base-v1 and controls section rules, density, and quality checks.",
+          },
         },
-        required: ["content"],
       }),
-      execute: async ({ content, filename }) => {
-        const safeName = (filename || "document")
+      execute: async ({
+        content,
+        sourcePath,
+        filename,
+        title,
+        organization,
+        author,
+        version,
+        docDate,
+        includeToc,
+        templatePath,
+        templateProfileId,
+      }) => {
+        let documentSource;
+        try {
+          documentSource = await loadMarkdownExportSource({
+            content,
+            sourcePath,
+            workspaceDir: runtimeContext.workspaceDir,
+          });
+        } catch (error) {
+          return {
+            error: error instanceof Error ? error.message : "Failed to load markdown source",
+            filename: filename ?? "document.docx",
+            sourcePath,
+          };
+        }
+
+        const docTitle = title?.trim() || documentSource.title || "需求说明书";
+        const safeName = (filename || docTitle || "document")
           .replace(/[^\w\u4e00-\u9fff.-]/g, "-")
           .replace(/^-+|-+$/g, "")
           .slice(0, 80) || "document";
@@ -184,15 +212,77 @@ export function buildDocxTools(runtimeContext: RuntimeContext) {
         const outputDir = path.join(runtimeContext.workspaceDir, "docs");
         const htmlPath = path.join(outputDir, `${safeName}.tmp.html`);
         const docxPath = path.join(outputDir, docxName);
-
-        // Extract title from first heading
-        const titleMatch = content.match(/^#\s+(.+)$/m);
-        const title = titleMatch?.[1]?.trim() || safeName;
+        const requestedTemplatePath = templatePath?.trim();
+        const repoTemplatePath = path.join(process.cwd(), "docs", "用户需求说明书_Base_clean.docx");
+        const fallbackTemplatePath = path.join(
+          runtimeContext.workspaceDir,
+          "docs",
+          "用户需求说明书_Base_clean.docx",
+        );
+        const resolvedTemplatePath = requestedTemplatePath
+          ? resolveWorkspacePath(runtimeContext.workspaceDir, requestedTemplatePath)
+          : (await fs
+              .stat(repoTemplatePath)
+              .then(() => repoTemplatePath)
+              .catch(() => fallbackTemplatePath));
+        const templateRelativePath = requestedTemplatePath
+          ? requestedTemplatePath
+          : resolvedTemplatePath
+            ? path.relative(runtimeContext.workspaceDir, resolvedTemplatePath).replace(/\\/g, "/")
+            : undefined;
 
         try {
-          // Convert markdown to HTML
-          const bodyHtml = await marked.parse(content, { async: false, gfm: true });
-          const fullHtml = wrapHtmlDocument(bodyHtml, title);
+          if (resolvedTemplatePath) {
+            const templateExists = await fs.stat(resolvedTemplatePath).then(() => true).catch(() => false);
+
+            if (templateExists) {
+              const templateBuildResult = buildDocxTemplatePayload(
+                documentSource.markdown,
+                docTitle,
+                {
+                  organization,
+                  author,
+                  version,
+                  docDate,
+                },
+                templateProfileId,
+              );
+              const fillResult = await fillDocxTemplate({
+                templatePath: resolvedTemplatePath,
+                outputPath: docxPath,
+                placeholderValues: templateBuildResult.placeholderValues,
+                featureBlocks: templateBuildResult.featureBlocks,
+                departmentRecords: templateBuildResult.departmentRecords,
+                buildResult: templateBuildResult,
+              });
+
+              const stat = await fs.stat(docxPath);
+              const relativePath = path.relative(runtimeContext.workspaceDir, docxPath).replace(/\\/g, "/");
+
+              return {
+                outputPath: relativePath,
+                downloadName: docxName,
+                title: docTitle,
+                sourcePath: documentSource.sourcePath,
+                templatePath: templateRelativePath,
+                templateProfileId: templateProfileId?.trim() || "user-requirements-base-v1",
+                previewMarkdown: documentSource.markdown.slice(0, 4000),
+                sizeBytes: stat.size,
+                qualityReport: fillResult.qualityReport,
+                relationIntegrity: fillResult.relationIntegrity,
+              };
+            }
+          }
+
+          const fullHtml = await renderRequirementsDocHtml({
+            markdown: documentSource.markdown,
+            title: docTitle,
+            organization,
+            author,
+            version,
+            docDate,
+            includeToc,
+          });
 
           // Convert HTML to DOCX via textutil (array args — safe)
           await writeHtmlAsDocx({ html: fullHtml, htmlPath, docxPath });
@@ -203,7 +293,10 @@ export function buildDocxTools(runtimeContext: RuntimeContext) {
           return {
             outputPath: relativePath,
             downloadName: docxName,
-            previewMarkdown: content.slice(0, 2000),
+            title: docTitle,
+            sourcePath: documentSource.sourcePath,
+            templatePath: undefined,
+            previewMarkdown: documentSource.markdown.slice(0, 4000),
             sizeBytes: stat.size,
           };
         } catch (error) {

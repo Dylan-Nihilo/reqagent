@@ -1,0 +1,20 @@
+{
+  "id": "local-e2e-attendance-staged-2026-03-27-20260327032705",
+  "messageId": "msg-f7485dbd-f336-4446-8412-84d4e532ffff",
+  "trigger": "submit-message",
+  "workspaceId": "e2e-attendance-staged-2026-03-27-20260327032705",
+  "threadId": "thread-e2e-attendance-staged-2026-03-27-20260327032705",
+  "localThreadId": "local-e2e-attendance-staged-2026-03-27-20260327032705",
+  "messages": [
+    {
+      "id": "user-0f2a010a-4be7-4df4-a031-1c76089957aa",
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "你现在在第四阶段，只做扩写追加。\n先 readFile `docs/requirements.md`，再用 writeFile append 追加。\n本阶段只追加 `3.2.13` 到 `3.2.16` 四个能力项，以及 `3.3 特色系统需求`。\n能力项名称固定为：`3.2.13 审批通知协同`、`3.2.14 主管工作台`、`3.2.15 员工自助服务`、`3.2.16 月结、薪资接口与统计审计`。\n`3.3` 需要保留多个子项，用正式正文写清本期涉及与不涉及范围，不要空挂。\n每个能力项都必须包含业务流程、业务功能详述、业务规则、输入要素表、输出要素表。\n每个能力项正文至少 900 个中文可见字符，不含表头。\n不要导出 DOCX，不要写总结。"
+        }
+      ]
+    }
+  ]
+}
