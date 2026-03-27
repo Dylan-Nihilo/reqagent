@@ -10,7 +10,9 @@ import {
   fillDocxTemplate,
   removeEmptyParagraphs,
   removeEmptyTableRows,
+  replaceDocxPlaceholders,
 } from "../docx-support";
+import { DEFAULT_DOCX_TEMPLATE_PATH } from "../docx-template-path";
 
 const PROCESS_DIR = path.join(process.cwd(), "test", "docx-pipeline");
 const OUTPUT_PATH = path.join(PROCESS_DIR, "pipeline-output.docx");
@@ -28,9 +30,7 @@ const DEFAULT_PLACEHOLDER_SECTION_HEADINGS = [
 ];
 
 function resolveTemplatePath() {
-  const candidates = [
-    path.join(process.cwd(), "docs", "用户需求说明书_Base_clean.docx"),
-  ];
+  const candidates = [DEFAULT_DOCX_TEMPLATE_PATH];
 
   return candidates.find((candidate) => existsSync(candidate));
 }

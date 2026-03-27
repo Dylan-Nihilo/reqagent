@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { removeEmptyTableRows } from "../docx-support";
 import { removeEmptyParagraphs } from "../docx-support";
+import { expandDepartmentRows, replaceDocxPlaceholders } from "../docx-support";
 
 describe("removeEmptyTableRows", () => {
   it("removes rows where all cells are empty", () => {
@@ -108,5 +109,62 @@ describe("removeEmptyParagraphs", () => {
     ].join("");
     const result = removeEmptyParagraphs(xml);
     expect((result.match(/<w:p[\s>]/g) ?? []).length).toBe(1);
+  });
+});
+
+describe("expandDepartmentRows", () => {
+  it("replaces only the outer department row when nested tables exist", () => {
+    const xml = [
+      "<w:document><w:body>",
+      "<w:tbl>",
+      '<w:tr><w:tc><w:p><w:r><w:t>部门名称</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>职责</w:t></w:r></w:p></w:tc></w:tr>',
+      '<w:tr><w:tc><w:p><w:r><w:t>{{部门1}}</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Nested</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:tc><w:tc><w:p><w:r><w:t>{{职责1}}</w:t></w:r></w:p></w:tc></w:tr>',
+      "</w:tbl>",
+      "</w:body></w:document>",
+    ].join("");
+
+    const result = expandDepartmentRows(xml, [
+      { department: "人力资源部", duty: "规则维护" },
+      { department: "信息技术部", duty: "系统实施" },
+    ]);
+
+    expect(result).toContain("人力资源部");
+    expect(result).toContain("信息技术部");
+    expect(result).toContain("Nested");
+    expect(result).not.toContain("{{部门1}}");
+    expect((result.match(/人力资源部|信息技术部/g) ?? []).length).toBe(2);
+  });
+});
+
+describe("replaceDocxPlaceholders", () => {
+  it("replaces placeholders split across multiple runs", () => {
+    const xml = [
+      "<w:document><w:body>",
+      '<w:p><w:r><w:t>{{项</w:t></w:r><w:r><w:t>目名称}}</w:t></w:r></w:p>',
+      "</w:body></w:document>",
+    ].join("");
+
+    const result = replaceDocxPlaceholders(xml, { 项目名称: "员工考勤管理系统" }, {
+      stripResidualPlaceholders: true,
+    });
+
+    expect(result).toContain("员工考勤管理系统");
+    expect(result).not.toContain("{{项");
+    expect(result).not.toContain("目名称}}");
+  });
+
+  it("strips unresolved placeholders even when runs are split", () => {
+    const xml = [
+      "<w:document><w:body>",
+      '<w:p><w:r><w:t>{{需求</w:t></w:r><w:r><w:t>背景}}</w:t></w:r></w:p>',
+      "</w:body></w:document>",
+    ].join("");
+
+    const result = replaceDocxPlaceholders(xml, {}, {
+      stripResidualPlaceholders: true,
+    });
+
+    expect(result).not.toContain("{{需求");
+    expect(result).not.toContain("背景}}");
   });
 });

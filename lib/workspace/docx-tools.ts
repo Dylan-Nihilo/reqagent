@@ -12,6 +12,7 @@ import {
   loadMarkdownExportSource,
   renderRequirementsDocHtml,
 } from "@/lib/workspace/docx-support";
+import { DEFAULT_DOCX_TEMPLATE_PATH } from "@/lib/workspace/docx-template-path";
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -213,7 +214,7 @@ export function buildDocxTools(runtimeContext: RuntimeContext) {
         const htmlPath = path.join(outputDir, `${safeName}.tmp.html`);
         const docxPath = path.join(outputDir, docxName);
         const requestedTemplatePath = templatePath?.trim();
-        const repoTemplatePath = path.join(process.cwd(), "docs", "用户需求说明书_Base_clean.docx");
+        const repoTemplatePath = DEFAULT_DOCX_TEMPLATE_PATH;
         const fallbackTemplatePath = path.join(
           runtimeContext.workspaceDir,
           "docs",

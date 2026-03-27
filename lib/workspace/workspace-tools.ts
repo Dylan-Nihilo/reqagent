@@ -449,6 +449,8 @@ export function buildWorkspaceTools(
           };
         },
       }),
+      // Real DOCX agent flow now writes staged long-form drafts directly in workspace docs/.
+      // Approval stays off to avoid interrupting multi-turn generation/export loops.
       needsApproval: false,
     },
 
@@ -467,6 +469,8 @@ export function buildWorkspaceTools(
           return executeInWorkspace(command, runtimeContext.workspaceDir, timeout);
         },
       }),
+      // Dylan explicitly switched the workspace shell path to auto-approve so the agent can
+      // complete end-to-end document generation without UI confirmation deadlocks.
       needsApproval: false,
     },
 

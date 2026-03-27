@@ -156,6 +156,7 @@ export const toolRegistry: ToolRegistryItem[] = [
     usageHint: "只有结构化工具不够用时再使用。",
     riskLevel: "sensitive",
     preferredOrder: 60,
+    // Mirrors runtime auto-approve for the real DOCX agent flow.
     supportsApproval: false,
     rendererKind: "terminal",
   },

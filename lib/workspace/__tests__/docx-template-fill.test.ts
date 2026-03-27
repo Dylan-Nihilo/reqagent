@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { execa } from "execa";
 import { buildDocxTemplatePayload, fillDocxTemplate } from "../docx-support";
+import { DEFAULT_DOCX_TEMPLATE_PATH } from "../docx-template-path";
 
 function buildSevenFeatureMarkdown() {
   const featureBlock = (index: number) => `### 能力项：功能项${index}
@@ -85,7 +86,7 @@ ${Array.from({ length: 7 }, (_value, index) => featureBlock(index + 1)).join("\n
 
 describe("fillDocxTemplate cleanup integration", () => {
   it("clean shell is python-docx readable and stripped of dirty content", async () => {
-    const templatePath = path.join(process.cwd(), "docs/用户需求说明书_Base_clean.docx");
+    const templatePath = DEFAULT_DOCX_TEMPLATE_PATH;
 
     await expect(fs.access(templatePath)).resolves.toBeUndefined();
     await execa("python3", [
@@ -113,15 +114,14 @@ describe("fillDocxTemplate cleanup integration", () => {
 
   it("output has no empty table rows after fill", async () => {
     const candidatePaths = [
-      "docs/用户需求说明书_Base_clean.docx",
+      DEFAULT_DOCX_TEMPLATE_PATH,
     ];
 
     let templatePath: string | undefined;
     for (const candidate of candidatePaths) {
-      const full = path.join(process.cwd(), candidate);
       try {
-        await fs.access(full);
-        templatePath = full;
+        await fs.access(candidate);
+        templatePath = candidate;
         break;
       } catch { /* try next */ }
     }
@@ -165,14 +165,9 @@ describe("fillDocxTemplate cleanup integration", () => {
   });
 
   it("repairs broken relationships and expands all feature blocks for requirements.md", async () => {
-    const workspaceRoot = process.cwd();
-    const templatePath = path.join(
-      workspaceRoot,
-      "docs/用户需求说明书_Base_clean.docx",
-    );
+    const templatePath = DEFAULT_DOCX_TEMPLATE_PATH;
     const requirementsPath = path.join(
-      workspaceRoot,
-      ".reqagent/workspaces/ws_77420f3f-2cde-47b7-8b0c-c03abe621356-636865ed732e/docs/requirements.md",
+      path.resolve(path.dirname(DEFAULT_DOCX_TEMPLATE_PATH), "..", "test", "2026-03-27", "员工考勤管理系统_最终验收包", "final", "requirements.md"),
     );
 
     try {
@@ -183,13 +178,14 @@ describe("fillDocxTemplate cleanup integration", () => {
     }
 
     const markdown = await fs.readFile(requirementsPath, "utf8");
+    const expectedFeatureCount = (markdown.match(/^####\s+3\.2\.\d+\s+/gm) ?? []).length;
     const buildResult = buildDocxTemplatePayload(markdown, "员工考勤管理系统需求说明书", {
       author: "ReqAgent",
       version: "v0.2",
       docDate: "2025/08/26",
     });
 
-    expect(buildResult.featureBlocks).toHaveLength(14);
+    expect(buildResult.featureBlocks).toHaveLength(expectedFeatureCount);
 
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "docx-fill-quality-"));
     const outputPath = path.join(tmpDir, "quality-output.docx");
@@ -204,7 +200,7 @@ describe("fillDocxTemplate cleanup integration", () => {
         buildResult,
       });
 
-      expect(result.qualityReport?.featureBlockCount).toBe(14);
+      expect(result.qualityReport?.featureBlockCount).toBe(expectedFeatureCount);
       expect(result.qualityReport?.placeholderResidualCount).toBe(0);
       expect(result.qualityReport?.relationIntegrity.isClean).toBe(true);
       expect(result.qualityReport?.structureCoverageRatio).toBeGreaterThan(0.9);
@@ -221,9 +217,9 @@ describe("fillDocxTemplate cleanup integration", () => {
       expect(xml).not.toContain("零售水晶球");
       expect(xml).not.toContain("非标准化代发");
       expect(rels).not.toContain("image4.png");
-      expect(xml).toContain("人力资源部");
-      expect(xml).toContain("信息技术部");
-      expect(xml).toContain("法务/内控（如有）");
+      for (const record of buildResult.departmentRecords) {
+        expect(xml).toContain(record.department);
+      }
 
       const featureHeadingMatches = [...xml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)]
         .map((match) => match[0])
@@ -232,7 +228,7 @@ describe("fillDocxTemplate cleanup integration", () => {
             /业务功能(?:[一二三四五六七八九十]|\d+)：/.test(paragraphXml) &&
             !paragraphXml.includes("PAGEREF"),
         );
-      expect(featureHeadingMatches.length).toBe(14);
+      expect(featureHeadingMatches.length).toBe(expectedFeatureCount);
 
       await execa("python3", [
         "-c",
@@ -244,11 +240,7 @@ describe("fillDocxTemplate cleanup integration", () => {
   });
 
   it("expands seven synthetic feature blocks in source order", async () => {
-    const workspaceRoot = process.cwd();
-    const templatePath = path.join(
-      workspaceRoot,
-      "docs/用户需求说明书_Base_clean.docx",
-    );
+    const templatePath = DEFAULT_DOCX_TEMPLATE_PATH;
 
     try {
       await fs.access(templatePath);

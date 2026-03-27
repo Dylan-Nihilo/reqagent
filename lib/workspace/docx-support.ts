@@ -1009,7 +1009,7 @@ export async function analyzeDocxStructure(docxPath: string): Promise<DocxStruct
       headings.find((heading) => heading.level === 1)?.text ||
       textParts.find((text) => text.length > 0)?.slice(0, 120) ||
       path.basename(docxPath, path.extname(docxPath));
-    const relationIntegrity = await inspectDocxPackage(tempDir, documentXml);
+    const relationIntegrity = await verifyDocxPackageRelations(tempDir, documentXml);
     const legacyContentHits = scanLegacyHits(textContent);
 
     return {
@@ -2829,6 +2829,46 @@ function splitDocumentXml(documentXml: string) {
   };
 }
 
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractBalancedTagXml(xml: string, startIndex: number, tag: string) {
+  const matcher = new RegExp(`<(/?)${escapeRegex(tag)}\\b[^>]*>`, "g");
+  matcher.lastIndex = startIndex;
+
+  let depth = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = matcher.exec(xml)) !== null) {
+    depth += match[1] ? -1 : 1;
+    if (depth === 0) {
+      return xml.slice(startIndex, match.index + match[0].length);
+    }
+  }
+
+  return undefined;
+}
+
+function extractBalancedTagBlocks(xml: string, tag: string) {
+  const matcher = new RegExp(`<${escapeRegex(tag)}\\b`, "g");
+  const blocks: string[] = [];
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = matcher.exec(xml)) !== null) {
+    if (match.index < cursor) continue;
+    const blockXml = extractBalancedTagXml(xml, match.index, tag);
+    if (!blockXml) break;
+
+    blocks.push(blockXml);
+    cursor = match.index + blockXml.length;
+    matcher.lastIndex = cursor;
+  }
+
+  return blocks;
+}
+
 function extractBodyBlockXml(bodyXml: string, startIndex: number, tag: string) {
   if (tag === "w:p") {
     const endIndex = bodyXml.indexOf("</w:p>", startIndex);
@@ -2843,17 +2883,7 @@ function extractBodyBlockXml(bodyXml: string, startIndex: number, tag: string) {
   }
 
   if (tag === "w:tbl") {
-    const matcher = /<(\/?)w:tbl\b[^>]*>/g;
-    matcher.lastIndex = startIndex;
-    let depth = 0;
-    let match: RegExpExecArray | null;
-
-    while ((match = matcher.exec(bodyXml)) !== null) {
-      depth += match[1] ? -1 : 1;
-      if (depth === 0) {
-        return bodyXml.slice(startIndex, match.index + match[0].length);
-      }
-    }
+    return extractBalancedTagXml(bodyXml, startIndex, tag);
   }
 
   return undefined;
@@ -2886,20 +2916,70 @@ function parseDocxBodyBlocks(documentXml: string) {
   return { prefix, suffix, blocks };
 }
 
-function renderLocalPlaceholderXml(xml: string, placeholderValues: Record<string, string>) {
-  let rendered = xml;
-
-  if (placeholderValues["功能标题1"]) {
-    rendered = rendered.replace(
-      /业务功能一：\{\{功能名称1\}\}/g,
-      escapeXmlText(normalizeWhitespace(placeholderValues["功能标题1"])),
-    );
+function ensureXmlSpaceAttribute(attributes: string, value: string) {
+  if (!value || !/(^\s)|(\s$)|\s{2,}|\n|\t/.test(value) || attributes.includes('xml:space="preserve"')) {
+    return attributes;
   }
+  return `${attributes} xml:space="preserve"`;
+}
 
+function replaceParagraphTextPlaceholders(
+  paragraphXml: string,
+  placeholderValues: Record<string, string>,
+  options?: { stripResidualPlaceholders?: boolean },
+) {
+  const textNodePattern = /<w:t\b([^>]*)>([\s\S]*?)<\/w:t>/g;
+  const textNodes = [...paragraphXml.matchAll(textNodePattern)];
+  if (textNodes.length === 0) return paragraphXml;
+
+  const combinedText = textNodes
+    .map((match) => decodeXmlEntities(match[2] ?? ""))
+    .join("");
+  if (!combinedText.includes("{{")) return paragraphXml;
+
+  let replacedText = combinedText;
   for (const [key, rawValue] of Object.entries(placeholderValues)) {
-    rendered = rendered.split(`{{${key}}}`).join(escapeXmlText(rawValue.trim()));
+    replacedText = replacedText.split(`{{${key}}}`).join(rawValue.trim());
+  }
+  if (options?.stripResidualPlaceholders) {
+    replacedText = replacedText.replace(/\{\{[^{}]+\}\}/g, "");
+  }
+  if (replacedText === combinedText) return paragraphXml;
+
+  let wroteReplacement = false;
+  return paragraphXml.replace(textNodePattern, (_match, rawAttributes = "") => {
+    if (wroteReplacement) {
+      return `<w:t${rawAttributes}></w:t>`;
+    }
+
+    wroteReplacement = true;
+    const attributes = ensureXmlSpaceAttribute(rawAttributes, replacedText);
+    return `<w:t${attributes}>${escapeXmlText(replacedText)}</w:t>`;
+  });
+}
+
+export function replaceDocxPlaceholders(
+  xml: string,
+  placeholderValues: Record<string, string>,
+  options?: { stripResidualPlaceholders?: boolean },
+) {
+  return xml.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (paragraphXml) =>
+    replaceParagraphTextPlaceholders(paragraphXml, placeholderValues, options),
+  );
+}
+
+function renderLocalPlaceholderXml(xml: string, placeholderValues: Record<string, string>) {
+  const normalizedValues = Object.fromEntries(
+    Object.entries(placeholderValues).map(([key, rawValue]) => [key, rawValue.trim()]),
+  );
+
+  if (normalizedValues["功能标题1"] && !normalizedValues["功能名称1"]) {
+    normalizedValues["功能名称1"] = normalizeWhitespace(normalizedValues["功能标题1"]);
   }
 
+  let rendered = replaceDocxPlaceholders(xml, normalizedValues, {
+    stripResidualPlaceholders: true,
+  });
   rendered = rendered.replace(/\{\{[^{}]+\}\}/g, "");
   rendered = removeEmptyTableRows(rendered);
   rendered = removeEmptyParagraphs(rendered);
@@ -3133,17 +3213,17 @@ export function expandDepartmentRows(documentXml: string, records: Array<{ depar
     return documentXml;
   }
 
-  return documentXml.replace(/<w:tbl\b[\s\S]*?<\/w:tbl>/g, (tableXml) => {
-    if (!tableXml.includes(DEPARTMENT_ROW_ANCHOR)) return tableXml;
-
-    const rows = [...tableXml.matchAll(/<w:tr\b[\s\S]*?<\/w:tr>/g)].map((match) => match[0] ?? "");
+  const renderDepartmentTable = (tableXml: string) => {
+    const rows = extractBalancedTagBlocks(tableXml, "w:tr");
     const templateRow = rows.find((row) => row.includes(DEPARTMENT_ROW_ANCHOR));
-    if (!templateRow) return tableXml;
+    if (!templateRow) {
+      return tableXml;
+    }
+
     const normalizedTemplateRow = templateRow
       .replace(/\{\{部门\d+\}\}/g, "{{部门1}}")
       .replace(/\{\{职责\d+\}\}/g, "{{职责1}}");
-
-    const renderedRows = records.map((record, index) =>
+    const renderedRows = records.map((record) =>
       renderLocalPlaceholderXml(normalizedTemplateRow, {
         部门1: record.department,
         职责1: record.duty,
@@ -3155,13 +3235,42 @@ export function expandDepartmentRows(documentXml: string, records: Array<{ depar
       if (row.includes("{{部门")) return rowIndex;
       return last;
     }, firstTemplateRow);
-    const startOffset = tableXml.indexOf(rows[firstTemplateRow] ?? "");
+    const startRow = rows[firstTemplateRow] ?? "";
     const endRow = rows[lastTemplateRow] ?? "";
+    const startOffset = tableXml.indexOf(startRow);
     const endOffset = tableXml.indexOf(endRow, startOffset) + endRow.length;
-    if (startOffset === -1 || endOffset < startOffset) return tableXml;
+    if (startOffset === -1 || endOffset < startOffset) {
+      return tableXml;
+    }
 
     return `${tableXml.slice(0, startOffset)}${renderedRows.join("")}${tableXml.slice(endOffset)}`;
+  };
+
+  if (!documentXml.includes("<w:body>")) {
+    return renderDepartmentTable(documentXml);
+  }
+
+  const { prefix, suffix, blocks } = parseDocxBodyBlocks(documentXml);
+  let didExpand = false;
+
+  const rebuiltBlocks = blocks.map((block) => {
+    if (block.type !== "table" || !block.xml.includes(DEPARTMENT_ROW_ANCHOR)) {
+      return block.xml;
+    }
+
+    const expandedTableXml = renderDepartmentTable(block.xml);
+    if (expandedTableXml !== block.xml) {
+      didExpand = true;
+    }
+
+    return expandedTableXml;
   });
+
+  if (!didExpand) {
+    return documentXml;
+  }
+
+  return `${prefix}${rebuiltBlocks.join("")}${suffix}`;
 }
 
 function removeLegacyDocxParagraphs(documentXml: string) {
@@ -3507,7 +3616,18 @@ async function enableUpdateFieldsOnOpen(tempDir: string) {
   await fs.writeFile(settingsPath, updatedXml, "utf8");
 }
 
-async function inspectDocxPackage(tempDir: string, documentXml?: string): Promise<DocxRelationIntegrity> {
+async function docxTargetExists(wordDir: string, target: string) {
+  if (target.startsWith("http://") || target.startsWith("https://")) {
+    return true;
+  }
+
+  return fs
+    .access(path.resolve(wordDir, target))
+    .then(() => true)
+    .catch(() => false);
+}
+
+async function readDocxPackageState(tempDir: string, documentXml?: string) {
   const wordDir = path.join(tempDir, "word");
   const relsPath = path.join(wordDir, "_rels", "document.xml.rels");
   const relsXml = await fs.readFile(relsPath, "utf8").catch(() => "");
@@ -3532,6 +3652,21 @@ async function inspectDocxPackage(tempDir: string, documentXml?: string): Promis
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject",
   ];
 
+  return {
+    wordDir,
+    relsPath,
+    relsXml,
+    currentDocumentXml,
+    relationships,
+    referencedIds,
+    removableTypes,
+  };
+}
+
+async function repairDocxPackageRelations(tempDir: string, documentXml?: string): Promise<DocxRelationIntegrity> {
+  const { wordDir, relsPath, relsXml, currentDocumentXml, relationships, referencedIds, removableTypes } =
+    await readDocxPackageState(tempDir, documentXml);
+
   const missingTargets: string[] = [];
   const removedRelationshipIds: string[] = [];
   const keptTargets = new Set<string>();
@@ -3549,13 +3684,7 @@ async function inspectDocxPackage(tempDir: string, documentXml?: string): Promis
 
   for (const relationship of relationships) {
     const localTarget = path.resolve(wordDir, relationship.target);
-    const localExists =
-      relationship.target.startsWith("http://") || relationship.target.startsWith("https://")
-        ? true
-        : await fs
-            .access(localTarget)
-            .then(() => true)
-            .catch(() => false);
+    const localExists = await docxTargetExists(wordDir, relationship.target);
 
     if (!localExists) {
       missingTargets.push(relationship.target);
@@ -3602,6 +3731,27 @@ async function inspectDocxPackage(tempDir: string, documentXml?: string): Promis
     removedRelationshipIds,
     removedMediaTargets,
     removedEmbeddingTargets,
+    staleObjectCount: (currentDocumentXml.match(/<w:object/g) ?? []).length,
+    isClean: missingTargets.length === 0,
+  };
+}
+
+async function verifyDocxPackageRelations(tempDir: string, documentXml?: string): Promise<DocxRelationIntegrity> {
+  const { wordDir, currentDocumentXml, relationships } = await readDocxPackageState(tempDir, documentXml);
+  const missingTargets: string[] = [];
+
+  for (const relationship of relationships) {
+    const localExists = await docxTargetExists(wordDir, relationship.target);
+    if (!localExists) {
+      missingTargets.push(relationship.target);
+    }
+  }
+
+  return {
+    missingTargets,
+    removedRelationshipIds: [],
+    removedMediaTargets: [],
+    removedEmbeddingTargets: [],
     staleObjectCount: (currentDocumentXml.match(/<w:object/g) ?? []).length,
     isClean: missingTargets.length === 0,
   };
@@ -3696,12 +3846,14 @@ export async function fillDocxTemplate(params: {
 
     documentXml = applyProfileDrivenShellTransforms(documentXml, params.buildResult);
 
-    for (const [key, rawValue] of Object.entries(params.placeholderValues)) {
-      const normalizedValue = rawValue.trim();
-      if (!normalizedValue) continue;
-      documentXml = documentXml.split(`{{${key}}}`).join(escapeXmlText(normalizedValue));
-    }
-
+    const normalizedPlaceholderValues = Object.fromEntries(
+      Object.entries(params.placeholderValues)
+        .map(([key, rawValue]) => [key, rawValue.trim()])
+        .filter(([, value]) => Boolean(value)),
+    );
+    documentXml = replaceDocxPlaceholders(documentXml, normalizedPlaceholderValues, {
+      stripResidualPlaceholders: true,
+    });
     documentXml = removeLegacyDocxParagraphs(documentXml);
     documentXml = documentXml.replace(/\{\{[^{}]+\}\}/g, "");
 
@@ -3710,8 +3862,8 @@ export async function fillDocxTemplate(params: {
     documentXml = removeEmptyParagraphs(documentXml);
 
     await fs.writeFile(documentXmlPath, documentXml, "utf8");
-    const repairedRelationIntegrity = await inspectDocxPackage(tempDir, documentXml);
-    const finalRelationIntegrityCheck = await inspectDocxPackage(tempDir, documentXml);
+    const repairedRelationIntegrity = await repairDocxPackageRelations(tempDir, documentXml);
+    const finalRelationIntegrityCheck = await verifyDocxPackageRelations(tempDir, documentXml);
     await enableUpdateFieldsOnOpen(tempDir);
     const relationIntegrity = {
       ...repairedRelationIntegrity,
