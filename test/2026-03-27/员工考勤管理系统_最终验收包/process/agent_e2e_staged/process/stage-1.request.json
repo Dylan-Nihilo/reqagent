@@ -1,0 +1,20 @@
+{
+  "id": "local-e2e-attendance-staged-2026-03-27-20260327032705",
+  "messageId": "msg-6b2fd18d-a947-4eb5-a641-3f795e8af461",
+  "trigger": "submit-message",
+  "workspaceId": "e2e-attendance-staged-2026-03-27-20260327032705",
+  "threadId": "thread-e2e-attendance-staged-2026-03-27-20260327032705",
+  "localThreadId": "local-e2e-attendance-staged-2026-03-27-20260327032705",
+  "messages": [
+    {
+      "id": "user-a784e344-4c84-4fa4-a484-ce7370a93e43",
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "你现在在真实 agent 对话流程的第一阶段。\n只允许做以下动作：\n1. 如有需要可先 list_files 或 readFile，但最终必须调用 writeFile。\n2. 用 writeFile 覆盖写入 `docs/requirements.md`。\n3. 本阶段只写这些内容：第1章、第2章、`3.1 功能分类`，以及 `3.2.1` 到 `3.2.4` 四个能力项。\n4. 文档标题固定为《员工考勤管理系统用户需求说明书》，风格必须是正式送审稿。\n5. `1.4` 必须是术语表，`2.4` 必须是部门职责表，`3.1` 必须是功能清单表。\n6. 每个能力项都必须包含：业务流程、业务功能详述、业务规则、输入要素表、输出要素表。\n7. 每个能力项正文密度要高，不要短句凑数；单个能力项正文至少 900 个中文可见字符，不含表头。\n8. 本阶段不要导出 DOCX，不要写完成总结。\n能力项名称固定为：`3.2.1 组织与考勤日历`、`3.2.2 班次规则管理`、`3.2.3 排班计划管理`、`3.2.4 打卡采集管理`。"
+        }
+      ]
+    }
+  ]
+}

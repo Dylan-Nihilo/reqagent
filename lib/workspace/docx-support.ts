@@ -36,6 +36,9 @@ export type DocxStructureAnalysis = {
   tableCount: number;
   charCount: number;
   textContent: string;
+  sectionCharCounts?: Array<{ heading: string; chars: number }>;
+  relationIntegrity?: DocxRelationIntegrity;
+  legacyContentHits?: Array<{ term: string; count: number }>;
 };
 
 export type DocxExportSource = {
@@ -55,7 +58,556 @@ type RenderRequirementsDocHtmlOptions = {
   includeToc?: boolean;
 };
 
+export type DocxRelationIntegrity = {
+  missingTargets: string[];
+  removedRelationshipIds: string[];
+  removedMediaTargets: string[];
+  removedEmbeddingTargets: string[];
+  staleObjectCount: number;
+  isClean: boolean;
+};
+
+export type DocxSectionContract = {
+  id: string;
+  title: string;
+  required: boolean;
+  targetChars: number;
+  contentTypes: Array<"paragraph" | "list" | "table" | "placeholder">;
+  fallbackText: string;
+  renderMode?:
+    | "plainParagraph"
+    | "termsTable"
+    | "featureBlock"
+    | "functionCatalogTable"
+    | "simpleFallbackSection"
+    | "dataRequirementSection";
+  bodyStyleId?: string;
+};
+
+export type DocxTemplateProfile = {
+  id: string;
+  name: string;
+  legacyTerms: string[];
+  sectionContracts: DocxSectionContract[];
+  featureBlock: {
+    targetChars: number;
+    processTargetChars: number;
+    detailTargetChars: number;
+    ruleTargetChars: number;
+    inputCapacity: number;
+    outputCapacity: number;
+    fallbackText: string;
+  };
+};
+
+export type DocxQualitySectionMetric = {
+  sectionId: string;
+  title: string;
+  targetChars: number;
+  actualChars: number;
+  ratio: number;
+  required: boolean;
+  usedFallback: boolean;
+  withinRange: boolean;
+};
+
+export type DocxQualityTableMetric = {
+  tableId: string;
+  title: string;
+  expectedRows: number;
+  renderedRows: number;
+  capacityRows: number;
+  completionRatio: number;
+};
+
+export type DocxQualityReport = {
+  profileId: string;
+  structureCoverageRatio: number;
+  requiredSectionCount: number;
+  coveredSectionCount: number;
+  featureBlockCount: number;
+  expectedFeatureBlockCount: number;
+  sectionMetrics: DocxQualitySectionMetric[];
+  tableMetrics: DocxQualityTableMetric[];
+  placeholderResidualCount: number;
+  legacyContentHits: Array<{ term: string; count: number }>;
+  relationIntegrity: DocxRelationIntegrity;
+};
+
+type DocxSectionValue = {
+  id: string;
+  title: string;
+  placeholder: string;
+  content: string;
+  targetChars: number;
+  usedFallback: boolean;
+  required: boolean;
+};
+
+type DocxFeatureRecord = {
+  name: string;
+  type: string;
+  required: string;
+  enumValues: string;
+  note: string;
+};
+
+type DocxTermRecord = {
+  term: string;
+  definition: string;
+};
+
+type DocxFunctionCatalogRecord = {
+  sequence: string;
+  module: string;
+  name: string;
+  note: string;
+};
+
+type DocxFeatureBlockModel = {
+  index: number;
+  name: string;
+  code: string;
+  processItems: string[];
+  detailItems: string[];
+  ruleItems: string[];
+  inputRecords: DocxFeatureRecord[];
+  outputRecords: DocxFeatureRecord[];
+  targetChars: number;
+  usedFallback: boolean;
+};
+
+type DocxTemplateBuildResult = {
+  profile: DocxTemplateProfile;
+  placeholderValues: Record<string, string>;
+  sectionValues: DocxSectionValue[];
+  featureBlocks: DocxFeatureBlockModel[];
+  termRecords: DocxTermRecord[];
+  functionCatalogRecords: DocxFunctionCatalogRecord[];
+  departmentRecords: Array<{ department: string; duty: string }>;
+  tableMetrics: DocxQualityTableMetric[];
+};
+
+type DocxBodyBlock = {
+  type: "paragraph" | "table" | "section";
+  xml: string;
+  text: string;
+};
+
 const PAGE_BREAK = '<div style="page-break-after: always;"></div>';
+const DOCX_MIN_RATIO = 0.7;
+const DOCX_MAX_RATIO = 1;
+const FEATURE_BLOCK_START_ANCHOR = "业务功能一：{{功能名称1}}";
+const FEATURE_BLOCK_END_ANCHOR = "特色系统需求";
+const DEPARTMENT_ROW_ANCHOR = "{{部门1}}";
+const FUNCTION_CATALOG_ROW_ANCHOR = "{{功能模块1}}";
+
+const BASE_DOCX_STYLES = {
+  normal: "1",
+  bodyFirstIndent: "2",
+  body: "3",
+  heading1: "4",
+  heading2: "5",
+  heading3: "6",
+  bodyIndent: "7",
+  heading4: "8",
+  heading5: "9",
+} as const;
+
+const BODY_STYLE_ID = BASE_DOCX_STYLES.body;
+const HEADING_STYLE_IDS = [
+  BASE_DOCX_STYLES.heading1,
+  BASE_DOCX_STYLES.heading2,
+  BASE_DOCX_STYLES.heading3,
+  BASE_DOCX_STYLES.heading4,
+  BASE_DOCX_STYLES.heading5,
+] as const;
+const SECTION_HEADING_STYLE_IDS = [
+  BASE_DOCX_STYLES.heading2,
+  BASE_DOCX_STYLES.heading3,
+  BASE_DOCX_STYLES.heading4,
+] as const;
+
+const USER_REQUIREMENTS_BASE_PROFILE: DocxTemplateProfile = {
+  id: "user-requirements-base-v1",
+  name: "User Requirements Base High Fidelity",
+  legacyTerms: [
+    "注意：此项必填",
+    "注意：仅涉及到使用并不涉及商务采购的也算使用",
+    "数据流向如下流程图",
+    "零售水晶球",
+    "新增代发管理",
+    "非标准化代发",
+    "非标代发",
+    "零售集市",
+  ],
+  sectionContracts: [
+    {
+      id: "1.1",
+      title: "需求背景",
+      required: true,
+      targetChars: 180,
+      contentTypes: ["paragraph"],
+      fallbackText: "结合当前业务现状与痛点，需启动本期建设，以形成统一、可追溯、可配置的业务支撑能力。",
+    },
+    {
+      id: "1.2",
+      title: "业务目标",
+      required: true,
+      targetChars: 120,
+      contentTypes: ["paragraph"],
+      fallbackText: "本期目标为沉淀标准化业务规则、提升处理效率并降低执行偏差。",
+    },
+    {
+      id: "1.3",
+      title: "业务价值",
+      required: true,
+      targetChars: 160,
+      contentTypes: ["paragraph"],
+      fallbackText: "通过统一入口、统一规则和统一口径，提升业务效率、降低操作风险，并为后续分析与集成提供基础。",
+    },
+    {
+      id: "1.4",
+      title: "术语",
+      required: true,
+      targetChars: 120,
+      contentTypes: ["paragraph"],
+      fallbackText: "本节用于统一关键术语、业务口径和角色定义，避免跨部门理解偏差。",
+      renderMode: "termsTable",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "2.1",
+      title: "业务概述",
+      required: true,
+      targetChars: 220,
+      contentTypes: ["paragraph"],
+      fallbackText: "本节概述业务参与方、适用范围、典型场景与整体运行方式，为后续功能说明提供上下文。",
+    },
+    {
+      id: "2.2",
+      title: "业务处理流程",
+      required: true,
+      targetChars: 220,
+      contentTypes: ["paragraph"],
+      fallbackText: "流程图占位：整体业务处理流程，后续接入渲染。",
+      renderMode: "plainParagraph",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "2.3.1",
+      title: "我行及同业现状",
+      required: true,
+      targetChars: 150,
+      contentTypes: ["paragraph"],
+      fallbackText: "当前行业普遍通过系统化、规则化方式提升业务处理一致性，但在跨系统协同、实时反馈与精细化控制方面仍存在提升空间。",
+    },
+    {
+      id: "2.3.2",
+      title: "我行存在的问题",
+      required: true,
+      targetChars: 150,
+      contentTypes: ["paragraph"],
+      fallbackText: "现有业务处理中仍存在流程割裂、人工判断较多、数据口径不统一与追溯难度较高等问题，需要通过本期建设统一治理。",
+    },
+    {
+      id: "2.4",
+      title: "项目参与部门及职责",
+      required: true,
+      targetChars: 120,
+      contentTypes: ["table"],
+      fallbackText: "本节用于明确业务、产品、技术、运营及管理相关参与方的职责边界。",
+    },
+    {
+      id: "3.1",
+      title: "功能分类",
+      required: true,
+      targetChars: 100,
+      contentTypes: ["list", "table"],
+      fallbackText: "本节用于汇总本期功能模块、功能名称和备注信息，形成标准功能清单。",
+      renderMode: "functionCatalogTable",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "3.3.1",
+      title: "支付系统",
+      required: false,
+      targetChars: 80,
+      contentTypes: ["placeholder"],
+      fallbackText: "本期不涉及，预留后续接入。",
+      renderMode: "simpleFallbackSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "3.3.2",
+      title: "回单系统",
+      required: false,
+      targetChars: 60,
+      contentTypes: ["placeholder"],
+      fallbackText: "本期不涉及，预留后续接入。",
+      renderMode: "simpleFallbackSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "3.3.3",
+      title: "报表",
+      required: false,
+      targetChars: 100,
+      contentTypes: ["placeholder"],
+      fallbackText: "本期不涉及，预留后续接入。",
+      renderMode: "simpleFallbackSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "3.3.4",
+      title: "询证函需求",
+      required: false,
+      targetChars: 80,
+      contentTypes: ["placeholder"],
+      fallbackText: "本期不涉及，预留后续接入。",
+      renderMode: "simpleFallbackSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "3.3.5",
+      title: "京智柜面需求",
+      required: false,
+      targetChars: 80,
+      contentTypes: ["placeholder"],
+      fallbackText: "本期不涉及，预留后续接入。",
+      renderMode: "simpleFallbackSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "3.3.6",
+      title: "核算引擎核算规则配置表",
+      required: false,
+      targetChars: 80,
+      contentTypes: ["placeholder"],
+      fallbackText: "本期不涉及，预留后续接入。",
+      renderMode: "simpleFallbackSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "3.3.7",
+      title: "对手信息",
+      required: false,
+      targetChars: 80,
+      contentTypes: ["placeholder"],
+      fallbackText: "本期不涉及，预留后续接入。",
+      renderMode: "simpleFallbackSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "3.3.8",
+      title: "通知类业务",
+      required: false,
+      targetChars: 80,
+      contentTypes: ["placeholder"],
+      fallbackText: "本期不涉及，预留后续接入。",
+      renderMode: "simpleFallbackSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "3.3.9",
+      title: "联网核查系统",
+      required: false,
+      targetChars: 80,
+      contentTypes: ["placeholder"],
+      fallbackText: "本期不涉及，预留后续接入。",
+      renderMode: "simpleFallbackSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "4.1",
+      title: "是否涉及使用外部数据",
+      required: true,
+      targetChars: 100,
+      contentTypes: ["paragraph"],
+      fallbackText: "本期默认不涉及新增外部数据接入，现阶段以行内数据为主开展建设；如后续引入外部数据，将补充审核编号、使用范围、来源合规性和审批记录。",
+      renderMode: "dataRequirementSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "4.2",
+      title: "外部数据是否含有与客户有关的信息",
+      required: true,
+      targetChars: 100,
+      contentTypes: ["paragraph"],
+      fallbackText: "本期默认不涉及新增客户相关外部数据；如后续引入涉及客户信息的数据，将同步补充客户授权方式、授权留痕要求以及无需授权的合规依据。",
+      renderMode: "dataRequirementSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "4.3",
+      title: "是否涉及监管报送",
+      required: true,
+      targetChars: 110,
+      contentTypes: ["paragraph"],
+      fallbackText: "本期默认不直接影响监管报送口径；如后续联动监管报送系统或影响报送字段、报文和规则口径，将补充涉及系统、字段范围和逻辑调整方案。",
+      renderMode: "dataRequirementSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "4.4",
+      title: "是否落实数据分级分类管控要求",
+      required: true,
+      targetChars: 100,
+      contentTypes: ["paragraph"],
+      fallbackText: "本期按现行数据分级分类制度执行，在需求、设计、开发、测试和投产阶段同步落实访问控制、最小必要、日志留痕和风险审计要求。",
+      renderMode: "dataRequirementSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "4.5",
+      title: "数据挖掘分析需求",
+      required: false,
+      targetChars: 100,
+      contentTypes: ["placeholder"],
+      fallbackText: "本期暂不新增专项数据挖掘分析需求；如后续引入指标加工、标签计算或专题分析能力，将补充分析目标、数据口径和输出形式。",
+      renderMode: "dataRequirementSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "4.6",
+      title: "是否差异化设置 “最小必要”数据权限",
+      required: true,
+      targetChars: 100,
+      contentTypes: ["paragraph"],
+      fallbackText: "本期按岗位职责和业务边界差异化配置数据权限，默认遵循“最小必要”原则；若存在统一权限场景，将在详细设计中补充原因说明和风险缓释措施。",
+      renderMode: "dataRequirementSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "4.7",
+      title: "是否涉及数据对外提供",
+      required: true,
+      targetChars: 100,
+      contentTypes: ["paragraph"],
+      fallbackText: "本期默认不涉及数据对外提供；如后续存在行外传输、共享或外部查询场景，需先完成内部审批并补充对外提供范围、对象、方式和安全控制要求。",
+      renderMode: "dataRequirementSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "4.8",
+      title: "是否涉及处理3级及以上数据",
+      required: true,
+      targetChars: 100,
+      contentTypes: ["paragraph"],
+      fallbackText: "本期默认按照数据分类分级管理制度开展识别与评估，当前未新增明确的3级及以上数据处理场景；如后续涉及高敏级数据，将逐项补充字段范围与控制要求。",
+      renderMode: "dataRequirementSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "4.9",
+      title: "是否涉及以下数据处理场景（多选）",
+      required: true,
+      targetChars: 110,
+      contentTypes: ["paragraph"],
+      fallbackText: "当前未新增需要单独审批的敏感数据处理场景；如后续涉及个人客户数据采集、批量查询展示、批量导出或向行外第三方传输数据，需同步补充身份认证、脱敏、下载限制和风险缓释措施。",
+      renderMode: "dataRequirementSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "4.10",
+      title: "是否涉及数据安全影响评估",
+      required: true,
+      targetChars: 100,
+      contentTypes: ["paragraph"],
+      fallbackText: "本期默认不单独触发数据安全影响评估；如后续新增高等级数据处理、新建系统或重大功能改造场景，将在上线前完成影响评估并附评估结论。",
+      renderMode: "dataRequirementSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "4.11",
+      title: "是否明确数据最短存储时间",
+      required: true,
+      targetChars: 100,
+      contentTypes: ["paragraph"],
+      fallbackText: "本期数据存储周期按照业务场景、合规要求和现网制度执行，默认明确最短存储时间并避免超期保留；如后续存在特殊存储场景，将补充具体保留期限和风险控制。",
+      renderMode: "dataRequirementSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "4.12",
+      title: "是否明确数据备份与恢复要求",
+      required: true,
+      targetChars: 100,
+      contentTypes: ["paragraph"],
+      fallbackText: "本期沿用现网数据备份与恢复基线，覆盖备份范围、备份频率、存储位置、恢复时间目标和恢复点目标，确保故障场景下关键数据可恢复。",
+      renderMode: "dataRequirementSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "4.13",
+      title: "是否明确数据操作日志记录要求",
+      required: true,
+      targetChars: 100,
+      contentTypes: ["paragraph"],
+      fallbackText: "本期默认对查询、导出、配置变更和敏感操作全量留痕，日志覆盖操作人员、时间、终端标识、操作对象和处理结果，并满足审计追溯要求。",
+      renderMode: "dataRequirementSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "4.14",
+      title: "是否明确数据安全风险监测范围与要求",
+      required: true,
+      targetChars: 100,
+      contentTypes: ["paragraph"],
+      fallbackText: "本期将风险监测纳入系统运行基线，覆盖访问异常、批量操作、敏感字段使用、导出传输和权限变更等重点场景，并结合告警机制进行持续监测。",
+      renderMode: "dataRequirementSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "4.15",
+      title: "是否审查模型开发加工目的与收集目的一致性",
+      required: true,
+      targetChars: 110,
+      contentTypes: ["paragraph"],
+      fallbackText: "本期默认遵循数据收集目的与加工目的保持一致的原则；如后续引入模型、算法或标签加工能力，将补充用途审查结论、伦理合规判断和审查留痕材料。",
+      renderMode: "dataRequirementSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "5.1",
+      title: "非功能性需求",
+      required: true,
+      targetChars: 220,
+      contentTypes: ["paragraph"],
+      fallbackText: "本期非功能需求按企业生产基线执行，需满足核心链路稳定性、关键接口性能、安全访问控制、审计留痕、异常告警和兼容性要求，确保高峰时段稳定可用并支持问题追踪。",
+      renderMode: "simpleFallbackSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+    {
+      id: "5.2",
+      title: "系统需求",
+      required: true,
+      targetChars: 220,
+      contentTypes: ["paragraph"],
+      fallbackText: "本期系统需求沿用现网部署与运维基线，需明确依赖系统、接口调用方式、监控告警覆盖范围、日志方案、任务调度策略和灾备恢复要求，保证上线后具备可观测和可运维能力。",
+      renderMode: "simpleFallbackSection",
+      bodyStyleId: BODY_STYLE_ID,
+    },
+  ],
+  featureBlock: {
+    targetChars: 560,
+    processTargetChars: 520,
+    detailTargetChars: 180,
+    ruleTargetChars: 640,
+    inputCapacity: 15,
+    outputCapacity: 18,
+    fallbackText: "本期不涉及，预留后续接入。",
+  },
+};
+
+export function resolveDocxTemplateProfile(templateProfileId?: string): DocxTemplateProfile {
+  const resolvedId = templateProfileId?.trim() || USER_REQUIREMENTS_BASE_PROFILE.id;
+  if (resolvedId === USER_REQUIREMENTS_BASE_PROFILE.id) {
+    return USER_REQUIREMENTS_BASE_PROFILE;
+  }
+
+  throw new Error(`Unknown DOCX template profile: ${resolvedId}`);
+}
 
 function escapeHtml(value: string) {
   return value
@@ -76,6 +628,123 @@ function decodeXmlEntities(value: string) {
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function polishGeneratedText(value: string) {
+  return normalizeWhitespace(value)
+    .replace(/\s*([，。；：！？、])\s*/g, "$1")
+    .replace(/([。！？；])\s+([\u4e00-\u9fff])/g, "$1$2")
+    .replace(/([（【《“‘])\s+/g, "$1")
+    .replace(/\s+([）】》”’])/g, "$1")
+    .replace(/；{2,}/g, "；")
+    .replace(/。；/g, "。")
+    .replace(/；。/g, "。")
+    .replace(/[；，,]\s*$/g, "")
+    .trim();
+}
+
+function countVisibleChars(value: string) {
+  return value.replace(/\s+/g, "").length;
+}
+
+function countPlaceholderResiduals(value: string) {
+  return (value.match(/\{\{[^{}]+\}\}/g) ?? []).length;
+}
+
+function isPlaceholderText(value: string) {
+  return /^\{\{[^{}]+\}\}$/.test(value.trim());
+}
+
+function toRatio(actual: number, target: number) {
+  if (!target) return 1;
+  return Number((actual / target).toFixed(2));
+}
+
+function isRatioWithinRange(ratio: number, required: boolean, usedFallback: boolean) {
+  if (!required && usedFallback) return true;
+  return ratio >= DOCX_MIN_RATIO && ratio <= DOCX_MAX_RATIO;
+}
+
+function trimToChars(value: string, maxChars: number) {
+  if (countVisibleChars(value) <= maxChars) return value;
+
+  let result = "";
+  for (const segment of value.split(/(?<=[。！？；])/)) {
+    const next = normalizeWhitespace(`${result} ${segment}`);
+    if (countVisibleChars(next) > maxChars) break;
+    result = next;
+  }
+
+  if (result) return result;
+
+  let plain = "";
+  for (const char of value) {
+    const next = `${plain}${char}`;
+    if (countVisibleChars(next) > maxChars) break;
+    plain = next;
+  }
+  return plain.trim();
+}
+
+function fitContentToBudget(value: string, targetChars: number, fallback: string) {
+  const fallbackValue = fallback.trim();
+  const normalized = normalizeWhitespace(value) || fallbackValue;
+  return trimToChars(normalized, targetChars);
+}
+
+function toSentenceList(value: string) {
+  return value
+    .split(/[；。!?！？\n]/)
+    .map((item) => normalizeWhitespace(item))
+    .filter(Boolean);
+}
+
+function joinListAsParagraph(items: string[]) {
+  return items.map((item) => normalizeWhitespace(item)).filter(Boolean).join("；");
+}
+
+function uniqueNonEmpty(values: string[]) {
+  return uniqueValues(values.map((value) => normalizeWhitespace(value)).filter(Boolean));
+}
+
+function safePlaceholderText(value: string) {
+  return value.replace(/\{\{[^{}]+\}\}/g, "").trim();
+}
+
+function buildFlowchartPlaceholder(value: string, purpose: string) {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) {
+    return `流程图占位：${purpose}，后续接入渲染。`;
+  }
+  return `流程图占位：${purpose}，后续接入渲染。${normalized}`;
+}
+
+function cleanLegacyText(value: string, legacyTerms = USER_REQUIREMENTS_BASE_PROFILE.legacyTerms) {
+  let result = value;
+  for (const term of legacyTerms) {
+    result = result.split(term).join("");
+  }
+  return polishGeneratedText(result);
+}
+
+function toChineseFeatureLabel(index: number) {
+  const numerals = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+  if (index <= numerals.length) return numerals[index - 1] ?? `${index}`;
+  return `${index}`;
+}
+
+function findSectionContract(profile: DocxTemplateProfile, id: string) {
+  const contract = profile.sectionContracts.find((item) => item.id === id);
+  if (!contract) {
+    throw new Error(`Missing DOCX section contract: ${id}`);
+  }
+  return contract;
+}
+
+function scanLegacyHits(value: string, legacyTerms = USER_REQUIREMENTS_BASE_PROFILE.legacyTerms) {
+  return legacyTerms
+    .map((term) => ({ term, count: value.split(term).length - 1 }))
+    .filter((item) => item.count > 0);
 }
 
 function escapeXmlText(value: string) {
@@ -245,88 +914,122 @@ export function formatDocDate(input = new Date()) {
 }
 
 export async function analyzeDocxStructure(docxPath: string): Promise<DocxStructureAnalysis> {
-  const [documentXml, stylesXml] = await Promise.all([
-    readZipEntry(docxPath, "word/document.xml"),
-    readZipEntry(docxPath, "word/styles.xml"),
-  ]);
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "reqagent-docx-analyze-"));
 
-  if (!documentXml) {
-    throw new Error("Failed to read word/document.xml from DOCX");
-  }
+  try {
+    await execa("unzip", ["-q", docxPath, "-d", tempDir]);
+    const [documentXml, stylesXml] = await Promise.all([
+      fs.readFile(path.join(tempDir, "word", "document.xml"), "utf8"),
+      fs.readFile(path.join(tempDir, "word", "styles.xml"), "utf8").catch(() => ""),
+    ]);
 
-  const styles = parseStyleSummaries(stylesXml);
-  const styleNameById = new Map(styles.map((style) => [style.styleId, style.name]));
+    if (!documentXml) {
+      throw new Error("Failed to read word/document.xml from DOCX");
+    }
 
-  const headings: DocxHeadingSummary[] = [];
-  const textParts: string[] = [];
-  let paragraphCount = 0;
+    const styles = parseStyleSummaries(stylesXml);
+    const styleNameById = new Map(styles.map((style) => [style.styleId, style.name]));
 
-  for (const match of documentXml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)) {
-    paragraphCount += 1;
-    const paragraphXml = match[0] ?? "";
-    const text = extractXmlText(paragraphXml);
-    if (!text) continue;
+    const headings: DocxHeadingSummary[] = [];
+    const textParts: string[] = [];
+    const paragraphTexts: Array<{ index: number; text: string }> = [];
+    let paragraphCount = 0;
 
-    textParts.push(text);
-    const styleId = paragraphXml.match(/<w:pStyle\b[^>]*w:val="([^"]+)"/)?.[1];
-    const styleName = styleId ? styleNameById.get(styleId) : undefined;
-    const level = inferHeadingLevel(styleName, text);
+    for (const match of documentXml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)) {
+      paragraphCount += 1;
+      const paragraphXml = match[0] ?? "";
+      const text = extractXmlText(paragraphXml);
+      if (!text) continue;
 
-    if (level) {
-      headings.push({
-        level,
-        text,
-        styleId,
-        styleName,
-        paragraphIndex: paragraphCount,
+      paragraphTexts.push({ index: paragraphCount, text });
+      textParts.push(text);
+      const styleId = paragraphXml.match(/<w:pStyle\b[^>]*w:val="([^"]+)"/)?.[1];
+      const styleName = styleId ? styleNameById.get(styleId) : undefined;
+      const level = inferHeadingLevel(styleName, text);
+
+      if (level) {
+        headings.push({
+          level,
+          text,
+          styleId,
+          styleName,
+          paragraphIndex: paragraphCount,
+        });
+      }
+    }
+
+    const tables: DocxTableSummary[] = [];
+    let tableIndex = 0;
+
+    for (const match of documentXml.matchAll(/<w:tbl\b[\s\S]*?<\/w:tbl>/g)) {
+      tableIndex += 1;
+      const tableXml = match[0] ?? "";
+      const rows = [...tableXml.matchAll(/<w:tr\b[\s\S]*?<\/w:tr>/g)].map((rowMatch) => {
+        const rowXml = rowMatch[0] ?? "";
+        return [...rowXml.matchAll(/<w:tc\b[\s\S]*?<\/w:tc>/g)].map((cellMatch) =>
+          extractXmlText(cellMatch[0] ?? ""),
+        );
+      });
+
+      const rowCount = rows.length;
+      const columnCount = rows.reduce((max, row) => Math.max(max, row.length), 0);
+
+      tables.push({
+        index: tableIndex,
+        rowCount,
+        columnCount,
+        previewRows: rows
+          .slice(0, 4)
+          .map((row) => row.map((cell) => cell.slice(0, 80))),
       });
     }
+
+    const sectionCharCounts = headings
+      .filter((heading) => !heading.text.includes("PAGEREF"))
+      .map((heading, index) => {
+        const nextHeadingParagraph = headings[index + 1]?.paragraphIndex ?? Number.POSITIVE_INFINITY;
+        const content = paragraphTexts
+          .filter(
+            (paragraph) =>
+              paragraph.index > heading.paragraphIndex &&
+              paragraph.index < nextHeadingParagraph &&
+              !paragraph.text.includes("PAGEREF"),
+          )
+          .map((paragraph) => paragraph.text)
+          .join("\n");
+
+        return {
+          heading: heading.text,
+          chars: countVisibleChars(content),
+        };
+      });
+
+    const textContent = textParts.join("\n");
+    const title =
+      headings.find((heading) => heading.level === 1)?.text ||
+      textParts.find((text) => text.length > 0)?.slice(0, 120) ||
+      path.basename(docxPath, path.extname(docxPath));
+    const relationIntegrity = await verifyDocxPackageRelations(tempDir, documentXml);
+    const legacyContentHits = scanLegacyHits(textContent);
+
+    return {
+      title,
+      headings,
+      tables,
+      styles: styles.slice(0, 32),
+      hasToc: /TOC\s+\\o/.test(documentXml) || styles.some((style) => /^toc /i.test(style.name)),
+      sectionCount: Math.max(1, documentXml.split("<w:sectPr").length - 1),
+      paragraphCount,
+      tableCount: tables.length,
+      charCount: textContent.length,
+      textContent,
+      sectionCharCounts,
+      relationIntegrity,
+      legacyContentHits,
+    };
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
   }
-
-  const tables: DocxTableSummary[] = [];
-  let tableIndex = 0;
-
-  for (const match of documentXml.matchAll(/<w:tbl\b[\s\S]*?<\/w:tbl>/g)) {
-    tableIndex += 1;
-    const tableXml = match[0] ?? "";
-    const rows = [...tableXml.matchAll(/<w:tr\b[\s\S]*?<\/w:tr>/g)].map((rowMatch) => {
-      const rowXml = rowMatch[0] ?? "";
-      return [...rowXml.matchAll(/<w:tc\b[\s\S]*?<\/w:tc>/g)].map((cellMatch) =>
-        extractXmlText(cellMatch[0] ?? ""),
-      );
-    });
-
-    const rowCount = rows.length;
-    const columnCount = rows.reduce((max, row) => Math.max(max, row.length), 0);
-
-    tables.push({
-      index: tableIndex,
-      rowCount,
-      columnCount,
-      previewRows: rows
-        .slice(0, 4)
-        .map((row) => row.map((cell) => cell.slice(0, 80))),
-    });
-  }
-
-  const textContent = textParts.join("\n");
-  const title =
-    headings.find((heading) => heading.level === 1)?.text ||
-    textParts.find((text) => text.length > 0)?.slice(0, 120) ||
-    path.basename(docxPath, path.extname(docxPath));
-
-  return {
-    title,
-    headings,
-    tables,
-    styles: styles.slice(0, 32),
-    hasToc: /TOC\s+\\o/.test(documentXml) || styles.some((style) => /^toc /i.test(style.name)),
-    sectionCount: Math.max(1, documentXml.split("<w:sectPr").length - 1),
-    paragraphCount,
-    tableCount: tables.length,
-    charCount: textContent.length,
-    textContent,
-  };
 }
 
 export function buildDocxStructureMarkdown(fileName: string, analysis: DocxStructureAnalysis) {
@@ -678,7 +1381,8 @@ function getSectionBodyByCandidates(
 }
 
 function markdownLinesToPlainText(value: string) {
-  return value
+  return polishGeneratedText(
+    value
     .replace(/```mermaid([\s\S]*?)```/gi, (_match, content: string) => {
       const steps = [...content.matchAll(/\[([^\]]+)\]/g)]
         .map((entry) => normalizeWhitespace(entry[1] ?? ""))
@@ -703,7 +1407,8 @@ function markdownLinesToPlainText(value: string) {
       ),
     )
     .filter(Boolean)
-    .join("；");
+    .join("；"),
+  );
 }
 
 function parseMarkdownList(body: string) {
@@ -764,6 +1469,65 @@ function getBodyTextByCandidates(
   return markdownLinesToPlainText(getSectionBodyByCandidates(sections, candidates));
 }
 
+function findSectionByCandidatesStrict(
+  sections: MarkdownSection[],
+  candidates: string[],
+) {
+  let bestMatch: MarkdownSection | undefined;
+  let bestScore = -1;
+
+  for (const section of sections) {
+    const sectionLabel = section.normalizedHeading;
+    const sectionKey = normalizeMatchKey(section.heading);
+
+    for (const candidate of candidates) {
+      const candidateLabel = normalizeHeadingLabel(candidate);
+      const candidateKey = normalizeMatchKey(candidate);
+      if (!candidateKey) continue;
+
+      let score = -1;
+      if (sectionLabel === candidateLabel) {
+        score = 6;
+      } else if (sectionKey === candidateKey) {
+        score = 5;
+      }
+
+      const tieBreak =
+        score >= 0 &&
+        score === bestScore &&
+        !bestMatch?.body?.trim() &&
+        section.body.trim();
+      if (score > bestScore || tieBreak) {
+        bestScore = score;
+        bestMatch = section;
+      }
+    }
+  }
+
+  return bestMatch;
+}
+
+function getSectionBodyByCandidatesStrict(
+  sections: MarkdownSection[],
+  candidates: string[],
+) {
+  const section = findSectionByCandidatesStrict(sections, candidates);
+  if (!section) return "";
+  if (section.body.trim()) return section.body;
+  const descendants = getDescendantSections(sections, section);
+  return descendants
+    .map((d) => d.body)
+    .filter(Boolean)
+    .join("\n");
+}
+
+function getBodyTextByCandidatesStrict(
+  sections: MarkdownSection[],
+  candidates: string[],
+) {
+  return markdownLinesToPlainText(getSectionBodyByCandidatesStrict(sections, candidates));
+}
+
 function assignSequence(
   target: Record<string, string>,
   prefix: string,
@@ -812,7 +1576,10 @@ function findSectionByCandidates(
       // This prevents matching an empty parent heading (e.g. `## 业务概述`)
       // when a child heading with the same name has actual content.
       const tieBreak =
-        score === bestScore && !bestMatch?.body?.trim() && section.body.trim();
+        score >= 0 &&
+        score === bestScore &&
+        !bestMatch?.body?.trim() &&
+        section.body.trim();
       if (score > bestScore || tieBreak) {
         bestScore = score;
         bestMatch = section;
@@ -971,6 +1738,7 @@ function readTableRecordValue(
 function extractFeatureName(heading: string) {
   return normalizeWhitespace(
     normalizeHeadingLabel(heading)
+      .replace(/^能力项[：:]\s*/, "")
       .replace(/^业务功能[一二三四五六七八九十\d]*[：:]\s*/, "")
       .replace(/^功能项[一二三四五六七八九十\d]*[：:]\s*/, "")
       .replace(/^功能[一二三四五六七八九十\d]*[：:]\s*/, "")
@@ -984,6 +1752,13 @@ function extractFeatureCode(heading: string) {
 }
 
 function findFeatureSections(sections: MarkdownSection[]) {
+  const explicitFeatureSections = sections.filter(
+    (section) => section.level >= 3 && /^能力项[：:]/.test(section.heading),
+  );
+  if (explicitFeatureSections.length > 0) {
+    return explicitFeatureSections;
+  }
+
   const genericHeadings = new Set(
     [
       "概述",
@@ -994,6 +1769,12 @@ function findFeatureSections(sections: MarkdownSection[]) {
       "术语定义",
       "业务概述",
       "业务处理流程",
+      "业务流程",
+      "业务功能详述",
+      "业务规则",
+      "输入和输出",
+      "输入要素",
+      "输出要素",
       "现状和存在的问题",
       "我行及同业现状",
       "我行存在的问题",
@@ -1100,6 +1881,642 @@ function collectFeatureTableRecords(
   return [];
 }
 
+function buildSectionValue(
+  profile: DocxTemplateProfile,
+  id: string,
+  placeholder: string,
+  rawContent: string,
+) {
+  const contract = findSectionContract(profile, id);
+  const fallbackText = contract.fallbackText.trim();
+  const cleaned = cleanLegacyText(safePlaceholderText(rawContent));
+  const usedFallback =
+    !cleaned || normalizeWhitespace(cleaned) === normalizeWhitespace(fallbackText);
+  const content = usedFallback
+    ? fallbackText
+    : fitContentToBudget(cleaned, contract.targetChars, fallbackText);
+
+  return {
+    id,
+    title: contract.title,
+    placeholder,
+    content,
+    targetChars: contract.targetChars,
+    usedFallback,
+    required: contract.required,
+  } satisfies DocxSectionValue;
+}
+
+function normalizeFeatureRecords(
+  records: Record<string, string>[],
+  fallback: string,
+) {
+  return records
+    .map((record) => ({
+      name: normalizeWhitespace(
+        readTableRecordValue(record, ["字段名称", "字段", "参数名称", "名称"], 1) ||
+          fallback,
+      ),
+      type: normalizeWhitespace(readTableRecordValue(record, ["类型", "数据类型"], 2) || "-"),
+      required: normalizeWhitespace(
+        readTableRecordValue(record, ["是否必填", "必填", "必输"], 3) || "-",
+      ),
+      enumValues: normalizeWhitespace(
+        readTableRecordValue(record, ["枚举值", "取值范围", "值域"], 4) || "-",
+      ),
+      note: normalizeWhitespace(readTableRecordValue(record, ["备注", "说明", "描述"], 5) || "-"),
+    }))
+    .filter((record) => Boolean(record.name));
+}
+
+function buildFeatureBlocks(
+  profile: DocxTemplateProfile,
+  sections: MarkdownSection[],
+) {
+  const featureSections = findFeatureSections(sections);
+  const fallbackItem = profile.featureBlock.fallbackText;
+
+  if (featureSections.length === 0) {
+    return [
+      {
+        index: 1,
+        name: "预留功能项",
+        code: "001",
+        processItems: [fallbackItem],
+        detailItems: [fallbackItem],
+        ruleItems: [fallbackItem],
+        inputRecords: [],
+        outputRecords: [],
+        targetChars: profile.featureBlock.targetChars,
+        usedFallback: true,
+      },
+    ] satisfies DocxFeatureBlockModel[];
+  }
+
+  return featureSections.map((featureSection, index) => {
+    const processRaw = collectFeatureItems(sections, featureSection, ["业务流程", "主流程", "流程说明"]);
+    const detailRaw = collectFeatureItems(sections, featureSection, ["业务功能详述", "功能描述", "功能详述"]);
+    const ruleRaw = uniqueNonEmpty([
+      ...collectFeatureItems(sections, featureSection, ["业务规则", "规则说明"]),
+      ...collectFeatureItems(sections, featureSection, ["异常处理", "异常场景"]),
+      ...collectFeatureItems(sections, featureSection, ["验收标准", "验收要点"]),
+    ]);
+
+    const processItems = uniqueNonEmpty(
+      (
+        processRaw.length > 0
+          ? processRaw
+          : toSentenceList(
+              markdownLinesToPlainText(
+                getSectionBodyByCandidates(
+                  getDescendantSections(sections, featureSection),
+                  ["业务流程", "主流程", "流程说明"],
+                ),
+              ),
+            )
+      ).slice(0, 16),
+    );
+    const detailItems = uniqueNonEmpty(detailRaw).slice(0, 16);
+    const ruleItems = uniqueNonEmpty(ruleRaw).slice(0, 16);
+
+    const inputRecords = normalizeFeatureRecords(
+      collectFeatureTableRecords(sections, featureSection, ["输入要素", "输入字段", "输入参数"]),
+      "待补充",
+    );
+    const outputRecords = normalizeFeatureRecords(
+      collectFeatureTableRecords(sections, featureSection, ["输出要素", "输出字段", "输出参数"]),
+      "待补充",
+    );
+
+    const normalizedProcess = processItems.length > 0 ? processItems : [fallbackItem];
+    const normalizedDetail = detailItems.length > 0 ? detailItems : [fallbackItem];
+    const normalizedRules = ruleItems.length > 0 ? ruleItems : [fallbackItem];
+
+    const rawCharCount =
+      countVisibleChars(joinListAsParagraph(normalizedProcess)) +
+      countVisibleChars(joinListAsParagraph(normalizedDetail)) +
+      countVisibleChars(joinListAsParagraph(normalizedRules)) +
+      countVisibleChars(
+        inputRecords
+          .map((record) => `${record.name}${record.type}${record.required}${record.enumValues}${record.note}`)
+          .join(""),
+      ) +
+      countVisibleChars(
+        outputRecords
+          .map((record) => `${record.name}${record.type}${record.required}${record.enumValues}${record.note}`)
+          .join(""),
+      );
+
+    return {
+      index: index + 1,
+      name: cleanLegacyText(extractFeatureName(featureSection.heading)) || `功能项${index + 1}`,
+      code: extractFeatureCode(featureSection.heading) || `${index + 1}`.padStart(3, "0"),
+      processItems: normalizedProcess,
+      detailItems: normalizedDetail,
+      ruleItems: normalizedRules,
+      inputRecords: inputRecords.slice(0, profile.featureBlock.inputCapacity),
+      outputRecords: outputRecords.slice(0, profile.featureBlock.outputCapacity),
+      targetChars: profile.featureBlock.targetChars,
+      usedFallback: rawCharCount === 0,
+    } satisfies DocxFeatureBlockModel;
+  });
+}
+
+function buildSpecialSystemContent(
+  sections: MarkdownSection[],
+  placeholderText: string,
+  candidates: string[],
+) {
+  const direct = cleanLegacyText(getBodyTextByCandidatesStrict(sections, candidates));
+  if (direct) {
+    return fitContentToBudget(direct, 100, placeholderText);
+  }
+  return placeholderText;
+}
+
+function buildDataRequirementContent(
+  sections: MarkdownSection[],
+  candidates: string[],
+  fallback: string,
+) {
+  const direct = cleanLegacyText(getBodyTextByCandidatesStrict(sections, candidates));
+  if (!direct) return fallback;
+  return fitContentToBudget(direct, Math.max(80, countVisibleChars(direct)), fallback);
+}
+
+function buildTermRecords(sections: MarkdownSection[], fallback: string) {
+  const records = parseMarkdownTableRecords(
+    getSectionBodyByCandidates(sections, ["术语", "术语定义", "名词解释"]),
+  )
+    .map((record) => ({
+      term: normalizeWhitespace(readTableRecordValue(record, ["术语", "名词", "词汇"], 0) || ""),
+      definition: normalizeWhitespace(
+        readTableRecordValue(record, ["定义", "说明", "解释"], 1) || "",
+      ),
+    }))
+    .filter((record) => record.term && record.definition);
+
+  if (records.length > 0) {
+    return records;
+  }
+
+  return [
+    {
+      term: "关键术语",
+      definition: fallback,
+    },
+  ] satisfies DocxTermRecord[];
+}
+
+function buildFunctionCatalogRecords(params: {
+  sections: MarkdownSection[];
+  featureBlocks: DocxFeatureBlockModel[];
+}) {
+  const explicitTableRecords = parseMarkdownTableRecords(
+    getSectionBodyByCandidates(params.sections, ["功能清单", "功能分类", "功能架构", "功能范围"]),
+  )
+    .map((record, index) => ({
+      sequence: normalizeWhitespace(
+        readTableRecordValue(record, ["序号", "序列"], 0) || `${index + 1}`,
+      ),
+      module: normalizeWhitespace(
+        readTableRecordValue(record, ["功能模块", "模块", "分类"], 1) || "核心功能",
+      ),
+      name: normalizeWhitespace(
+        readTableRecordValue(record, ["功能名称", "名称", "功能点"], 2) || "",
+      ),
+      note: normalizeWhitespace(readTableRecordValue(record, ["备注", "说明"], 3) || "-"),
+    }))
+    .filter((record) => record.name);
+
+  if (explicitTableRecords.length > 0) {
+    return explicitTableRecords;
+  }
+
+  const rawItems = parseMarkdownList(
+    getSectionBodyByCandidates(params.sections, ["功能架构", "功能分类", "功能清单", "功能范围"]),
+  );
+  const hasRealFeatureBlocks = params.featureBlocks.some(
+    (feature) => !feature.usedFallback && feature.name !== "预留功能项",
+  );
+  const normalizedItems = uniqueNonEmpty(
+    rawItems.length > 0
+      ? rawItems
+      : hasRealFeatureBlocks
+        ? params.featureBlocks.map((feature) => feature.name)
+        : [],
+  );
+
+  return normalizedItems.map((item, index) => {
+    const normalized = normalizeWhitespace(item);
+    const pair = normalized.split(/[：:]/).map((value) => normalizeWhitespace(value));
+    const hasModulePrefix = pair.length >= 2;
+    return {
+      sequence: `${index + 1}`,
+      module: hasModulePrefix ? pair[0] || "核心功能" : "核心功能",
+      name: hasModulePrefix ? pair.slice(1).join("：") || normalized : normalized,
+      note: "-",
+    } satisfies DocxFunctionCatalogRecord;
+  });
+}
+
+export function buildDocxTemplatePayload(
+  markdown: string,
+  documentTitle: string,
+  metadata?: {
+    organization?: string;
+    author?: string;
+    version?: string;
+    docDate?: string;
+  },
+  templateProfileId = USER_REQUIREMENTS_BASE_PROFILE.id,
+) {
+  const profile = resolveDocxTemplateProfile(templateProfileId);
+  const sections = parseMarkdownSections(markdown);
+  const placeholders: Record<string, string> = {};
+  const normalizedTitle = documentTitle
+    .replace(/[-—–]\s*产品需求文档$/i, "")
+    .replace(/(?:需求规格说明书|需求说明书|产品需求文档|产品需求说明书|PRD)$/i, "")
+    .trim();
+
+  placeholders["项目名称"] = cleanLegacyText(normalizedTitle || "用户需求说明书");
+  placeholders["制作单位"] = metadata?.organization?.trim() || "（部门）";
+  placeholders["文档版本号"] = metadata?.version?.trim() || "V1.0";
+  placeholders["日期"] = metadata?.docDate?.trim() || formatDocDate();
+  placeholders["编写人员"] = metadata?.author?.trim() || "ReqAgent";
+  placeholders["校对人员"] = metadata?.author?.trim() || "ReqAgent";
+  placeholders["签署日期"] = metadata?.docDate?.trim() || formatDocDate();
+  placeholders["占位符"] = "本期不涉及，预留后续接入。";
+
+  const genericProblemSummary =
+    getBodyTextByCandidatesStrict(sections, ["现状和存在的问题", "现状问题", "存在的问题"]) ||
+    getBodyTextByCandidatesStrict(sections, ["现状问题分析", "业务层面问题", "管理层面问题", "系统层面问题"]);
+  const genericProblemContent = cleanLegacyText(genericProblemSummary);
+  const genericTerms = cleanLegacyText(getBodyTextByCandidates(sections, ["术语定义", "术语", "名词解释"]));
+  const genericOverview = cleanLegacyText(getBodyTextByCandidates(sections, ["业务概述", "方案概述", "业务说明"]));
+  const genericProcess = cleanLegacyText(
+    getBodyTextByCandidates(sections, ["业务处理总流程", "业务处理流程", "整体流程", "业务流程"]),
+  );
+  const featureBlocks = buildFeatureBlocks(profile, sections);
+  const termRecords = buildTermRecords(sections, findSectionContract(profile, "1.4").fallbackText);
+  const functionCatalogRecords = buildFunctionCatalogRecords({
+    sections,
+    featureBlocks,
+  });
+  const featureNames = featureBlocks.map((feature) => feature.name);
+  const parsedFeatureCategories = parseMarkdownList(
+    getSectionBodyByCandidates(sections, ["功能架构", "功能分类", "功能清单", "功能范围"]),
+  );
+  const hasRealFeatureBlocks = featureBlocks.some(
+    (featureBlock) => !featureBlock.usedFallback && featureBlock.name !== "预留功能项",
+  );
+  const functionalDomains = uniqueNonEmpty(
+    parsedFeatureCategories.length > 0
+      ? parsedFeatureCategories
+      : hasRealFeatureBlocks
+        ? featureNames
+        : [],
+  );
+
+  const sectionValues = [
+    buildSectionValue(
+      profile,
+      "1.1",
+      "需求背景",
+      getBodyTextByCandidates(sections, ["需求背景", "项目背景", "建设背景"]),
+    ),
+    buildSectionValue(
+      profile,
+      "1.2",
+      "业务目标",
+      getBodyTextByCandidates(sections, ["建设目标", "业务目标", "项目目标"]),
+    ),
+    buildSectionValue(
+      profile,
+      "1.3",
+      "业务价值",
+      getBodyTextByCandidates(sections, ["业务价值", "项目价值", "预期收益"]),
+    ),
+    buildSectionValue(profile, "1.4", "术语内容", genericTerms),
+    buildSectionValue(profile, "2.1", "业务概述", genericOverview),
+    buildSectionValue(
+      profile,
+      "2.2",
+      "业务处理流程说明",
+      genericProcess.includes("flowchart")
+        ? buildFlowchartPlaceholder(genericProcess, "整体业务处理流程")
+        : genericProcess,
+    ),
+    buildSectionValue(
+      profile,
+      "2.3.1",
+      "同业现状",
+      getBodyTextByCandidatesStrict(sections, ["我行及同业现状", "同业现状", "现状分析"]) ||
+        genericProblemContent,
+    ),
+    buildSectionValue(
+      profile,
+      "2.3.2",
+      "现存问题",
+      getBodyTextByCandidatesStrict(sections, ["我行存在的问题", "现存问题", "存在的问题"]) ||
+        genericProblemContent,
+    ),
+    buildSectionValue(
+      profile,
+      "3.1",
+      "功能分类说明",
+      functionCatalogRecords.map((record) => `${record.module}：${record.name}`).join("；"),
+    ),
+    buildSectionValue(
+      profile,
+      "3.3.1",
+      "支付系统需求",
+      buildSpecialSystemContent(sections, findSectionContract(profile, "3.3.1").fallbackText, ["支付系统", "支付相关需求"]),
+    ),
+    buildSectionValue(
+      profile,
+      "3.3.2",
+      "回单系统需求",
+      buildSpecialSystemContent(sections, findSectionContract(profile, "3.3.2").fallbackText, ["回单系统", "回单相关需求"]),
+    ),
+    buildSectionValue(
+      profile,
+      "3.3.3",
+      "报表需求",
+      buildSpecialSystemContent(sections, findSectionContract(profile, "3.3.3").fallbackText, ["报表", "报表需求", "统计报表"]),
+    ),
+    buildSectionValue(
+      profile,
+      "3.3.4",
+      "询证函需求",
+      buildSpecialSystemContent(sections, findSectionContract(profile, "3.3.4").fallbackText, ["询证函需求", "询证函"]),
+    ),
+    buildSectionValue(
+      profile,
+      "3.3.5",
+      "京智柜面需求",
+      buildSpecialSystemContent(sections, findSectionContract(profile, "3.3.5").fallbackText, ["京智柜面需求", "京智柜面"]),
+    ),
+    buildSectionValue(
+      profile,
+      "3.3.6",
+      "核算引擎需求",
+      buildSpecialSystemContent(sections, findSectionContract(profile, "3.3.6").fallbackText, ["核算引擎核算规则配置表", "核算引擎需求", "核算引擎"]),
+    ),
+    buildSectionValue(
+      profile,
+      "3.3.7",
+      "对手信息需求",
+      buildSpecialSystemContent(sections, findSectionContract(profile, "3.3.7").fallbackText, ["对手信息", "对手信息需求"]),
+    ),
+    buildSectionValue(
+      profile,
+      "3.3.8",
+      "通知类业务需求",
+      buildSpecialSystemContent(sections, findSectionContract(profile, "3.3.8").fallbackText, ["通知类业务", "通知类业务需求", "通知需求"]),
+    ),
+    buildSectionValue(
+      profile,
+      "3.3.9",
+      "联网核查需求",
+      buildSpecialSystemContent(sections, findSectionContract(profile, "3.3.9").fallbackText, ["联网核查系统", "联网核查需求", "联网核查"]),
+    ),
+    buildSectionValue(
+      profile,
+      "4.1",
+      "外部数据范围说明",
+      buildDataRequirementContent(sections, ["是否涉及使用外部数据", "外部数据使用情况"], findSectionContract(profile, "4.1").fallbackText),
+    ),
+    buildSectionValue(
+      profile,
+      "4.2",
+      "授权方式",
+      buildDataRequirementContent(sections, ["外部数据是否含有与客户有关的信息", "客户相关信息"], findSectionContract(profile, "4.2").fallbackText),
+    ),
+    buildSectionValue(
+      profile,
+      "4.3",
+      "调整方案",
+      buildDataRequirementContent(sections, ["是否涉及监管报送", "监管报送"], findSectionContract(profile, "4.3").fallbackText),
+    ),
+    buildSectionValue(
+      profile,
+      "4.4",
+      "控制措施",
+      buildDataRequirementContent(sections, ["是否落实数据分级分类管控要求", "数据分级分类管控要求"], findSectionContract(profile, "4.4").fallbackText),
+    ),
+    buildSectionValue(
+      profile,
+      "4.5",
+      "数据分析需求",
+      buildDataRequirementContent(sections, ["数据挖掘分析需求", "数据分析需求", "数据分析"], findSectionContract(profile, "4.5").fallbackText),
+    ),
+    buildSectionValue(
+      profile,
+      "4.6",
+      "最小必要数据权限",
+      buildDataRequirementContent(sections, ["是否差异化设置 “最小必要”数据权限", "最小必要数据权限"], findSectionContract(profile, "4.6").fallbackText),
+    ),
+    buildSectionValue(
+      profile,
+      "4.7",
+      "数据对外提供",
+      buildDataRequirementContent(sections, ["是否涉及数据对外提供", "数据对外提供"], findSectionContract(profile, "4.7").fallbackText),
+    ),
+    buildSectionValue(
+      profile,
+      "4.8",
+      "三级及以上数据处理",
+      buildDataRequirementContent(sections, ["是否涉及处理3级及以上数据", "3级及以上数据"], findSectionContract(profile, "4.8").fallbackText),
+    ),
+    buildSectionValue(
+      profile,
+      "4.9",
+      "数据处理场景",
+      buildDataRequirementContent(sections, ["是否涉及以下数据处理场景（多选）", "数据处理场景"], findSectionContract(profile, "4.9").fallbackText),
+    ),
+    buildSectionValue(
+      profile,
+      "4.10",
+      "数据安全影响评估",
+      buildDataRequirementContent(sections, ["是否涉及数据安全影响评估", "数据安全影响评估"], findSectionContract(profile, "4.10").fallbackText),
+    ),
+    buildSectionValue(
+      profile,
+      "4.11",
+      "数据最短存储时间",
+      buildDataRequirementContent(sections, ["是否明确数据最短存储时间", "数据最短存储时间"], findSectionContract(profile, "4.11").fallbackText),
+    ),
+    buildSectionValue(
+      profile,
+      "4.12",
+      "数据备份与恢复要求",
+      buildDataRequirementContent(sections, ["是否明确数据备份与恢复要求", "数据备份与恢复要求"], findSectionContract(profile, "4.12").fallbackText),
+    ),
+    buildSectionValue(
+      profile,
+      "4.13",
+      "数据操作日志记录要求",
+      buildDataRequirementContent(sections, ["是否明确数据操作日志记录要求", "数据操作日志记录要求"], findSectionContract(profile, "4.13").fallbackText),
+    ),
+    buildSectionValue(
+      profile,
+      "4.14",
+      "数据安全风险监测范围与要求",
+      buildDataRequirementContent(sections, ["是否明确数据安全风险监测范围与要求", "数据安全风险监测"], findSectionContract(profile, "4.14").fallbackText),
+    ),
+    buildSectionValue(
+      profile,
+      "4.15",
+      "模型开发加工目的与收集目的一致性",
+      buildDataRequirementContent(sections, ["是否审查模型开发加工目的与收集目的一致性", "模型开发加工目的与收集目的一致性"], findSectionContract(profile, "4.15").fallbackText),
+    ),
+    buildSectionValue(
+      profile,
+      "5.1",
+      "非功能性需求",
+      getBodyTextByCandidatesStrict(sections, ["非功能性需求", "非功能需求"]),
+    ),
+    buildSectionValue(
+      profile,
+      "5.2",
+      "系统需求",
+      getBodyTextByCandidatesStrict(sections, ["系统需求", "系统级需求"]),
+    ),
+  ];
+
+  sectionValues.forEach((sectionValue) => {
+    placeholders[sectionValue.placeholder] = sectionValue.content;
+  });
+
+  const departmentRecords = parseMarkdownTableRecords(
+    getSectionBodyByCandidates(sections, ["项目参与部门及职责", "参与部门及职责", "参与方及职责"]),
+  ).map((record) => ({
+    department: normalizeWhitespace(
+      readTableRecordValue(record, ["部门名称", "参与方", "部门", "机构"], 0) || "待补充",
+    ),
+    duty: normalizeWhitespace(readTableRecordValue(record, ["职责", "责任", "说明"], 1) || "待补充"),
+  }));
+  departmentRecords.slice(0, 2).forEach((record, index) => {
+    placeholders[`部门${index + 1}`] = record.department;
+    placeholders[`职责${index + 1}`] = record.duty;
+  });
+
+  if (featureBlocks[0]) {
+    placeholders["功能名称1"] = featureBlocks[0].name;
+    placeholders["功能编号1"] = featureBlocks[0].code;
+  }
+  assignSequence(placeholders, "功能域", functionalDomains, 12);
+  assignSequence(
+    placeholders,
+    "步骤",
+    toSentenceList(placeholders["业务处理流程说明"] || genericProcess),
+    12,
+  );
+
+  termRecords.slice(0, 2).forEach((record, index) => {
+    if (record.term) placeholders[`术语${index + 1}`] = record.term;
+    if (record.definition) placeholders[`定义${index + 1}`] = record.definition;
+  });
+
+  placeholders["现状问题概述"] = genericProblemContent || findSectionContract(profile, "2.3.2").fallbackText;
+  placeholders["外部数据是否使用"] = /不涉及|不使用|否/.test(placeholders["外部数据范围说明"] || "") ? "否" : "待确认";
+  placeholders["审核编号"] = "待确认";
+  placeholders["外部数据含客信息"] = /客户/.test(placeholders["授权方式"] || "") ? "是" : "否";
+  placeholders["无需授权说明"] = findSectionContract(profile, "4.2").fallbackText;
+  placeholders["监管报送影响"] = /不影响|暂不/.test(placeholders["调整方案"] || "") ? "否" : "待确认";
+  placeholders["系统名称"] = "待确认";
+  placeholders["字段范围"] = "待确认";
+  placeholders["数据分级落实"] = "是";
+  placeholders["性能要求"] = "按企业生产基线执行，满足业务高峰期正常处理要求。";
+  placeholders["安全要求"] = "按现行权限、审计、数据保护和访问控制规范执行。";
+  placeholders["可用性要求"] = "系统应支持核心功能稳定可用，并具备异常监控与告警能力。";
+  placeholders["审计要求"] = "关键操作、配置变更和结果修正需完整留痕，可追溯操作主体与时间。";
+  placeholders["兼容性要求"] = "与现有认证、组织、审批、消息及报表体系保持兼容。";
+  placeholders["部署要求"] = "沿用现有生产部署基线，详细部署方案在后续设计阶段补充。";
+  placeholders["依赖系统"] = "组织/权限、审批、消息、认证等企业基础系统。";
+  placeholders["接口要求"] = "接口应满足幂等、可追踪和异常重试要求。";
+  placeholders["监控要求"] = "需覆盖任务执行、接口失败、规则异常与关键操作告警。";
+  placeholders["灾备要求"] = "沿用现网灾备体系，确保关键数据可恢复。";
+  placeholders["变更1_1"] = metadata?.version?.trim() || "V1.0";
+  placeholders["变更1_2"] = metadata?.docDate?.trim() || formatDocDate();
+  placeholders["变更1_3"] = "全文";
+  placeholders["变更1_4"] = "A";
+  placeholders["变更1_5"] = "初稿生成";
+  placeholders["变更1_6"] = metadata?.author?.trim() || "ReqAgent";
+  placeholders["功能分类说明"] = functionalDomains.join("；");
+  functionCatalogRecords.slice(0, 12).forEach((record, index) => {
+    placeholders[`功能清单序号${index + 1}`] = record.sequence;
+    placeholders[`功能模块${index + 1}`] = record.module;
+    placeholders[`功能清单名称${index + 1}`] = record.name;
+    placeholders[`功能清单备注${index + 1}`] = record.note;
+  });
+
+  const tableMetrics: DocxQualityTableMetric[] = [
+    {
+      tableId: "3.1",
+      title: "功能清单",
+      expectedRows: functionCatalogRecords.length,
+      renderedRows: functionCatalogRecords.length,
+      capacityRows: Math.max(1, functionCatalogRecords.length),
+      completionRatio: functionCatalogRecords.length > 0 ? 1 : 0,
+    },
+    {
+      tableId: "2.4",
+      title: "项目参与部门及职责",
+      expectedRows: departmentRecords.length,
+      renderedRows: departmentRecords.length,
+      capacityRows: Math.max(2, departmentRecords.length),
+      completionRatio: departmentRecords.length > 0 ? 1 : 0,
+    },
+    ...featureBlocks.flatMap((feature) => [
+      {
+        tableId: `3.2.${feature.index}.input`,
+        title: `3.2.${feature.index} 输入要素`,
+        expectedRows: feature.inputRecords.length,
+        renderedRows: feature.inputRecords.length,
+        capacityRows: profile.featureBlock.inputCapacity,
+        completionRatio:
+          feature.inputRecords.length === 0
+            ? 1
+            : Number(
+                (
+                  Math.min(feature.inputRecords.length, profile.featureBlock.inputCapacity) /
+                  feature.inputRecords.length
+                ).toFixed(2),
+              ),
+      },
+      {
+        tableId: `3.2.${feature.index}.output`,
+        title: `3.2.${feature.index} 输出要素`,
+        expectedRows: feature.outputRecords.length,
+        renderedRows: feature.outputRecords.length,
+        capacityRows: profile.featureBlock.outputCapacity,
+        completionRatio:
+          feature.outputRecords.length === 0
+            ? 1
+            : Number(
+                (
+                  Math.min(feature.outputRecords.length, profile.featureBlock.outputCapacity) /
+                  feature.outputRecords.length
+                ).toFixed(2),
+              ),
+      },
+    ]),
+  ];
+
+  return {
+    profile,
+    placeholderValues: placeholders,
+    sectionValues,
+    featureBlocks,
+    termRecords,
+    functionCatalogRecords,
+    departmentRecords,
+    tableMetrics,
+  } satisfies DocxTemplateBuildResult;
+}
+
 export function buildTemplatePlaceholderValues(
   markdown: string,
   documentTitle: string,
@@ -1109,283 +2526,10 @@ export function buildTemplatePlaceholderValues(
     version?: string;
     docDate?: string;
   },
+  templateProfileId = USER_REQUIREMENTS_BASE_PROFILE.id,
 ) {
-  const sections = parseMarkdownSections(markdown);
-  const placeholders: Record<string, string> = {};
-  const normalizedTitle = documentTitle
-    .replace(/[-—–]\s*产品需求文档$/i, "")
-    .replace(/(?:需求规格说明书|需求说明书|产品需求文档|产品需求说明书|PRD)$/i, "")
-    .trim();
-
-  if (normalizedTitle) {
-    placeholders["项目名称"] = normalizedTitle;
-  }
-  if (metadata?.organization?.trim()) placeholders["制作单位"] = metadata.organization.trim();
-  if (metadata?.author?.trim()) placeholders["编写人员"] = metadata.author.trim();
-  if (metadata?.version?.trim()) placeholders["文档版本号"] = metadata.version.trim();
-  if (metadata?.docDate?.trim()) placeholders["日期"] = metadata.docDate.trim();
-
-  placeholders["占位符"] = "请将文中各占位符替换为真实业务内容。";
-  const featureSections = findFeatureSections(sections);
-  const primaryFeature = featureSections[0];
-
-  const genericProblemSummary = getBodyTextByCandidates(sections, [
-    "现状和存在的问题",
-    "现状问题",
-    "存在的问题",
-  ]);
-  if (genericProblemSummary) {
-    placeholders["现状问题概述"] = genericProblemSummary;
-    placeholders["同业现状"] ||= genericProblemSummary;
-    placeholders["现存问题"] ||= genericProblemSummary;
-  }
-
-  const genericFeatureCategories = getBodyTextByCandidates(sections, [
-    "功能分类",
-    "功能清单",
-    "功能范围",
-  ]);
-  if (genericFeatureCategories) {
-    placeholders["功能分类说明"] = genericFeatureCategories;
-  } else if (featureSections.length > 0) {
-    placeholders["功能分类说明"] = featureSections
-      .slice(0, 8)
-      .map((section) => extractFeatureName(section.heading))
-      .filter(Boolean)
-      .join("；");
-  }
-
-  const genericProcess = getBodyTextByCandidates(sections, [
-    "业务处理流程",
-    "整体流程",
-    "业务流程",
-  ]);
-  if (genericProcess) {
-    placeholders["业务处理流程说明"] = genericProcess;
-  }
-
-  const genericTerms = getBodyTextByCandidates(sections, ["术语定义", "术语", "名词解释"]);
-  if (genericTerms) {
-    placeholders["术语内容"] = genericTerms;
-  }
-
-  const genericNonFunctional = getBodyTextByCandidates(sections, [
-    "非功能性需求",
-    "非功能需求",
-  ]);
-  if (genericNonFunctional) {
-    placeholders["非功能性需求"] = genericNonFunctional;
-  }
-
-  const genericSystemReq = getBodyTextByCandidates(sections, ["系统需求", "系统级需求"]);
-  if (genericSystemReq) {
-    placeholders["系统需求"] = genericSystemReq;
-  }
-
-  const simpleSectionMappings: Array<{ candidates: string[]; placeholder: string }> = [
-    { candidates: ["需求背景", "项目背景", "建设背景"], placeholder: "需求背景" },
-    { candidates: ["业务目标", "建设目标", "项目目标"], placeholder: "业务目标" },
-    { candidates: ["业务价值", "项目价值", "预期收益"], placeholder: "业务价值" },
-    { candidates: ["业务概述", "方案概述", "业务说明"], placeholder: "业务概述" },
-    { candidates: ["我行及同业现状", "同业现状", "现状分析"], placeholder: "同业现状" },
-    { candidates: ["我行存在的问题", "现存问题", "存在的问题"], placeholder: "现存问题" },
-    { candidates: ["支付系统", "支付相关需求"], placeholder: "支付系统需求" },
-    { candidates: ["回单系统", "回单相关需求"], placeholder: "回单系统需求" },
-    { candidates: ["报表", "报表需求", "统计报表"], placeholder: "报表需求" },
-    { candidates: ["询证函需求", "询证函"], placeholder: "询证函需求" },
-    { candidates: ["京智柜面需求", "京智柜面"], placeholder: "京智柜面需求" },
-    { candidates: ["核算引擎核算规则配置表", "核算引擎需求", "核算引擎"], placeholder: "核算引擎需求" },
-    { candidates: ["对手信息", "对手信息需求"], placeholder: "对手信息需求" },
-    { candidates: ["通知类业务", "通知类业务需求", "通知需求"], placeholder: "通知类业务需求" },
-    { candidates: ["联网核查系统", "联网核查需求", "联网核查"], placeholder: "联网核查需求" },
-    { candidates: ["数据挖掘分析需求", "数据分析需求", "数据分析"], placeholder: "数据分析需求" },
-  ];
-
-  for (const { candidates, placeholder } of simpleSectionMappings) {
-    const value = getBodyTextByCandidates(sections, candidates);
-    if (value) {
-      placeholders[placeholder] = value;
-    }
-  }
-
-  const termRows = parseMarkdownTable(getSectionBodyByCandidates(sections, ["术语", "术语定义", "名词解释"])).slice(1, 3);
-  termRows.forEach((row, index) => {
-    if (row[0]) placeholders[`术语${index + 1}`] = row[0];
-    if (row[1]) placeholders[`定义${index + 1}`] = row[1];
-  });
-
-  const departmentRecords = parseMarkdownTableRecords(
-    getSectionBodyByCandidates(sections, ["项目参与部门及职责", "参与部门及职责", "参与方及职责"]),
-  ).slice(0, 3);
-  departmentRecords.forEach((record, index) => {
-    const department = readTableRecordValue(record, ["部门名称", "参与方", "部门", "机构"], 0);
-    const duty = readTableRecordValue(record, ["职责", "责任", "说明"], 1);
-    if (department) placeholders[`部门${index + 1}`] = department;
-    if (duty) placeholders[`职责${index + 1}`] = duty;
-  });
-
-  assignSequence(
-    placeholders,
-    "功能域",
-    parseMarkdownList(getSectionBodyByCandidates(sections, ["功能分类", "功能清单", "功能范围"])),
-    12,
-  );
-  assignSequence(
-    placeholders,
-    "步骤",
-    parseMarkdownList(getSectionBodyByCandidates(sections, ["业务处理流程", "整体流程", "业务流程"])),
-    12,
-  );
-
-  const featureProcessItems = primaryFeature
-    ? collectFeatureItems(sections, primaryFeature, ["业务流程", "主流程", "流程说明"])
-    : [];
-  const featureDetailItems = primaryFeature
-    ? collectFeatureItems(sections, primaryFeature, ["业务功能详述", "功能描述", "功能详述"])
-    : [];
-  const featureRuleItems = primaryFeature
-    ? uniqueValues([
-        ...collectFeatureItems(sections, primaryFeature, ["业务规则", "规则说明"]),
-        ...collectFeatureItems(sections, primaryFeature, ["异常处理", "异常场景"]),
-        ...collectFeatureItems(sections, primaryFeature, ["验收标准", "验收要点"]),
-      ])
-    : [];
-
-  assignSequence(
-    placeholders,
-    "业务流程说明",
-    featureProcessItems.length > 0
-      ? featureProcessItems
-      : parseMarkdownList(getSectionBodyByCandidates(sections, ["业务流程", "主流程"])),
-    16,
-  );
-  assignSequence(
-    placeholders,
-    "功能详述",
-    featureDetailItems.length > 0
-      ? featureDetailItems
-      : parseMarkdownList(getSectionBodyByCandidates(sections, ["业务功能详述", "功能描述", "功能详述"])),
-    16,
-  );
-  assignSequence(
-    placeholders,
-    "业务规则",
-    featureRuleItems.length > 0
-      ? featureRuleItems
-      : parseMarkdownList(getSectionBodyByCandidates(sections, ["业务规则", "异常处理", "验收标准"])),
-    16,
-  );
-  assignSequence(
-    placeholders,
-    "待确认事项",
-    parseMarkdownList(getSectionBodyByCandidates(sections, ["假设与待确认", "假设", "待确认事项"])),
-    3,
-  );
-
-  const featureInputRecords = primaryFeature
-    ? collectFeatureTableRecords(sections, primaryFeature, ["输入要素", "输入字段", "输入参数"])
-    : [];
-  const inputRecords =
-    featureInputRecords.length > 0
-      ? featureInputRecords
-      : parseMarkdownTableRecords(getSectionBodyByCandidates(sections, ["输入要素", "输入字段", "输入参数"]));
-  inputRecords.forEach((record, index) => {
-    const n = index + 1;
-    placeholders[`输入字段${n}`] = readTableRecordValue(record, ["字段名称", "字段", "参数名称", "名称"], 1);
-    placeholders[`输入类型${n}`] = readTableRecordValue(record, ["类型", "数据类型"], 2);
-    placeholders[`输入必填${n}`] = readTableRecordValue(record, ["是否必填", "必填", "必输"], 3);
-    placeholders[`输入枚举${n}`] = readTableRecordValue(record, ["枚举值", "取值范围", "值域"], 4);
-    placeholders[`输入备注${n}`] = readTableRecordValue(record, ["备注", "说明", "描述"], 5);
-  });
-
-  const featureOutputRecords = primaryFeature
-    ? collectFeatureTableRecords(sections, primaryFeature, ["输出要素", "输出字段", "输出参数"])
-    : [];
-  const outputRecords =
-    featureOutputRecords.length > 0
-      ? featureOutputRecords
-      : parseMarkdownTableRecords(getSectionBodyByCandidates(sections, ["输出要素", "输出字段", "输出参数"]));
-  outputRecords.forEach((record, index) => {
-    const n = index + 1;
-    placeholders[`输出字段${n}`] = readTableRecordValue(record, ["字段名称", "字段", "参数名称", "名称"], 1);
-    placeholders[`输出类型${n}`] = readTableRecordValue(record, ["类型", "数据类型"], 2);
-    placeholders[`输出必填${n}`] = readTableRecordValue(record, ["是否必填", "必填", "必输"], 3);
-    placeholders[`输出枚举${n}`] = readTableRecordValue(record, ["枚举值", "取值范围", "值域"], 4);
-    placeholders[`输出备注${n}`] = readTableRecordValue(record, ["备注", "说明", "描述"], 5);
-  });
-
-  const nonFunctionalRows = parseMarkdownTable(
-    getSectionBodyByCandidates(sections, ["非功能性需求", "非功能需求"]),
-  ).slice(1);
-  for (const row of nonFunctionalRows) {
-    const dimension = row[0] ?? "";
-    const requirement = row[1] ?? "";
-    if (!dimension || !requirement) continue;
-    if (dimension === "性能") placeholders["性能要求"] = requirement;
-    if (dimension === "安全") placeholders["安全要求"] = requirement;
-    if (dimension === "可用性") placeholders["可用性要求"] = requirement;
-    if (dimension === "审计") placeholders["审计要求"] = requirement;
-    if (dimension === "兼容性") placeholders["兼容性要求"] = requirement;
-  }
-
-  const externalData = parseKeyValueLines(getSectionBodyByCandidates(sections, ["是否涉及使用外部数据", "外部数据使用情况"]));
-  if (externalData["是否涉及使用外部数据"]) placeholders["外部数据是否使用"] = externalData["是否涉及使用外部数据"];
-  if (externalData["外部数据审核编号"]) placeholders["审核编号"] = externalData["外部数据审核编号"];
-  if (externalData["外部数据范围说明"]) placeholders["外部数据范围说明"] = externalData["外部数据范围说明"];
-
-  const customerData = parseKeyValueLines(
-    getSectionBodyByCandidates(sections, ["外部数据是否含有与客户有关的信息", "客户相关信息"]),
-  );
-  if (customerData["是否含有客户相关信息"]) placeholders["外部数据含客信息"] = customerData["是否含有客户相关信息"];
-  if (customerData["授权方式描述"]) placeholders["授权方式"] = customerData["授权方式描述"];
-  if (customerData["不需要授权时的说明"]) placeholders["无需授权说明"] = customerData["不需要授权时的说明"];
-
-  const regulatory = parseKeyValueLines(getSectionBodyByCandidates(sections, ["是否涉及监管报送", "监管报送"]));
-  if (regulatory["是否影响监管报送"]) placeholders["监管报送影响"] = regulatory["是否影响监管报送"];
-  if (regulatory["涉及报送系统"]) placeholders["系统名称"] = regulatory["涉及报送系统"];
-  if (regulatory["影响的表和字段范围"]) placeholders["字段范围"] = regulatory["影响的表和字段范围"];
-  if (regulatory["逻辑调整方案"]) placeholders["调整方案"] = regulatory["逻辑调整方案"];
-
-  const classification = parseKeyValueLines(
-    getSectionBodyByCandidates(sections, ["是否落实数据分级分类管控要求", "数据分级分类管控要求"]),
-  );
-  if (classification["是否已落实数据分级分类"]) placeholders["数据分级落实"] = classification["是否已落实数据分级分类"];
-  if (classification["具体控制措施"]) placeholders["控制措施"] = classification["具体控制措施"];
-
-  const systemRequirements = parseKeyValueLines(getSectionBodyByCandidates(sections, ["系统需求", "系统级需求"]));
-  if (systemRequirements["部署要求"]) placeholders["部署要求"] = systemRequirements["部署要求"];
-  if (systemRequirements["依赖系统"]) placeholders["依赖系统"] = systemRequirements["依赖系统"];
-  if (systemRequirements["接口要求"]) placeholders["接口要求"] = systemRequirements["接口要求"];
-  if (systemRequirements["监控告警"]) placeholders["监控要求"] = systemRequirements["监控告警"];
-  if (systemRequirements["灾备要求"]) placeholders["灾备要求"] = systemRequirements["灾备要求"];
-
-  if (featureSections[0]) {
-    placeholders["功能名称1"] = extractFeatureName(featureSections[0].heading);
-    placeholders["功能编号1"] = extractFeatureCode(featureSections[0].heading) || "001";
-  }
-  if (featureSections[1]) {
-    placeholders["功能名称2"] = extractFeatureName(featureSections[1].heading);
-    placeholders["功能编号2"] = extractFeatureCode(featureSections[1].heading) || "002";
-  }
-
-  if (!placeholders["功能名称1"]) {
-    const firstFeature = sections.find((section) => /^3\.2\.1\s+/.test(section.heading) || /^功能项[：:]/.test(section.heading));
-    if (firstFeature) {
-      placeholders["功能名称1"] = extractFeatureName(firstFeature.heading);
-      placeholders["功能编号1"] = extractFeatureCode(firstFeature.heading) || "001";
-    }
-  }
-
-  placeholders["校对人员"] ||= metadata?.author?.trim() || "";
-  placeholders["签署日期"] ||= metadata?.docDate?.trim() || "";
-  placeholders["变更1_1"] ||= metadata?.version?.trim() || "V1.0";
-  placeholders["变更1_2"] ||= metadata?.docDate?.trim() || "";
-  placeholders["变更1_3"] ||= "全文";
-  placeholders["变更1_4"] ||= "A";
-  placeholders["变更1_5"] ||= "初稿生成";
-  placeholders["变更1_6"] ||= metadata?.author?.trim() || "ReqAgent";
-
-  return placeholders;
+  return buildDocxTemplatePayload(markdown, documentTitle, metadata, templateProfileId)
+    .placeholderValues;
 }
 
 /**
@@ -1448,7 +2592,7 @@ export function removeEmptyParagraphs(xml: string) {
     // Never touch paragraphs inside tables (cell structure depends on them)
     if (isInsideTable(offset)) return para;
     // Keep if it has visible text
-    if (/<w:t[\s>]/.test(para)) return para;
+    if (extractXmlText(para)) return para;
     // Keep if it has a page or section break
     if (/w:br\s+w:type="page"/.test(para)) return para;
     if (/<w:sectPr/.test(para)) return para;
@@ -1463,24 +2607,1246 @@ export function removeEmptyParagraphs(xml: string) {
   });
 }
 
+function getParagraphStyleId(paragraphXml: string) {
+  return paragraphXml.match(/<w:pStyle\b[^>]*w:val="([^"]+)"/)?.[1] ?? "";
+}
+
+function replaceOrInsertParagraphStyle(paragraphProperties: string, styleId: string) {
+  if (!paragraphProperties) {
+    return `<w:pPr><w:pStyle w:val="${escapeXmlText(styleId)}"/></w:pPr>`;
+  }
+
+  if (/<w:pStyle\b/.test(paragraphProperties)) {
+    return paragraphProperties.replace(
+      /<w:pStyle\b[^>]*w:val="[^"]*"[^/]*\/>/,
+      `<w:pStyle w:val="${escapeXmlText(styleId)}"/>`,
+    );
+  }
+
+  return paragraphProperties.replace(
+    /<w:pPr\b[^>]*>/,
+    `$&<w:pStyle w:val="${escapeXmlText(styleId)}"/>`,
+  );
+}
+
+function normalizeParagraphProperties(
+  paragraphProperties: string,
+  options?: {
+    paragraphStyleId?: string;
+    removeNumbering?: boolean;
+  },
+) {
+  let normalized = paragraphProperties || "<w:pPr></w:pPr>";
+
+  if (options?.removeNumbering) {
+    normalized = normalized.replace(/<w:numPr\b[\s\S]*?<\/w:numPr>/g, "");
+  }
+
+  if (options?.paragraphStyleId) {
+    normalized = replaceOrInsertParagraphStyle(normalized, options.paragraphStyleId);
+  }
+
+  return normalized;
+}
+
+function getFirstRunProperties(paragraphXml: string) {
+  const runMatch = paragraphXml.match(/<w:r\b[\s\S]*?<\/w:r>/);
+  if (!runMatch) return "";
+  return runMatch[0].match(/<w:rPr\b[\s\S]*?<\/w:rPr>/)?.[0] ?? "";
+}
+
+function getOpenTag(xml: string, fallbackTag: string) {
+  return xml.match(new RegExp(`^<${fallbackTag}\\b[^>]*>`))?.[0] ?? `<${fallbackTag}>`;
+}
+
+function buildPlainParagraphXml(
+  templateParagraphXml: string,
+  text: string,
+  options?: {
+    paragraphStyleId?: string;
+    preserveParagraphProperties?: boolean;
+    removeNumbering?: boolean;
+    preserveFirstRunProperties?: boolean;
+  },
+) {
+  const openTag = getOpenTag(templateParagraphXml, "w:p");
+  const preservedPPr = options?.preserveParagraphProperties
+    ? templateParagraphXml.match(/<w:pPr\b[\s\S]*?<\/w:pPr>/)?.[0] ?? ""
+    : "";
+  const paragraphStyleId = options?.paragraphStyleId?.trim();
+  const paragraphProperties = normalizeParagraphProperties(
+    paragraphStyleId
+      ? preservedPPr || "<w:pPr></w:pPr>"
+      : preservedPPr,
+    {
+      paragraphStyleId,
+      removeNumbering: options?.removeNumbering,
+    },
+  );
+  const bookmarkStarts = options?.preserveParagraphProperties
+    ? (templateParagraphXml.match(/<w:bookmarkStart\b[^>]*\/>/g) ?? []).join("")
+    : "";
+  const bookmarkEnds = options?.preserveParagraphProperties
+    ? (templateParagraphXml.match(/<w:bookmarkEnd\b[^>]*\/>/g) ?? []).join("")
+    : "";
+  const runProperties = options?.preserveFirstRunProperties
+    ? getFirstRunProperties(templateParagraphXml)
+    : "";
+
+  return `${openTag}${paragraphProperties}${bookmarkStarts}<w:r>${runProperties}<w:t xml:space="preserve">${escapeXmlText(
+    normalizeWhitespace(text),
+  )}</w:t></w:r>${bookmarkEnds}</w:p>`;
+}
+
+function isHeadingBlock(block: DocxBodyBlock) {
+  if (block.type !== "paragraph") return false;
+  const styleId = getParagraphStyleId(block.xml);
+  return HEADING_STYLE_IDS.includes(styleId as (typeof HEADING_STYLE_IDS)[number]) && Boolean(normalizeWhitespace(block.text));
+}
+
+function splitTableRows(tableXml: string) {
+  return [...tableXml.matchAll(/<w:tr\b[\s\S]*?<\/w:tr>/g)].map((match) => match[0] ?? "");
+}
+
+function splitTableCells(rowXml: string) {
+  return [...rowXml.matchAll(/<w:tc\b[\s\S]*?<\/w:tc>/g)].map((match) => match[0] ?? "");
+}
+
+function renderCellXml(cellXml: string, text: string) {
+  const openTag = getOpenTag(cellXml, "w:tc");
+  const tcPr = cellXml.match(/<w:tcPr\b[\s\S]*?<\/w:tcPr>/)?.[0] ?? "";
+  const paragraphTemplate =
+    cellXml.match(/<w:p\b[\s\S]*?<\/w:p>/)?.[0] ?? "<w:p><w:r><w:t></w:t></w:r></w:p>";
+  const renderedParagraph = buildPlainParagraphXml(paragraphTemplate, text, {
+    preserveParagraphProperties: true,
+    removeNumbering: true,
+    preserveFirstRunProperties: true,
+  });
+  return `${openTag}${tcPr}${renderedParagraph}</w:tc>`;
+}
+
+function renderTableRowXml(rowXml: string, values: string[]) {
+  const openTag = getOpenTag(rowXml, "w:tr");
+  const trPr = rowXml.match(/<w:trPr\b[\s\S]*?<\/w:trPr>/)?.[0] ?? "";
+  const cells = splitTableCells(rowXml);
+  if (cells.length === 0) return rowXml;
+
+  const renderedCells = cells.map((cellXml, index) => renderCellXml(cellXml, values[index] ?? ""));
+  return `${openTag}${trPr}${renderedCells.join("")}</w:tr>`;
+}
+
+function renderTableFromTemplate(params: {
+  tableXml: string;
+  rowAnchorPattern: RegExp;
+  headerValues?: string[];
+  rowValues: string[][];
+}) {
+  const rows = splitTableRows(params.tableXml);
+  if (rows.length === 0) {
+    return params.tableXml;
+  }
+
+  const anchorRow = rows.find((row) => params.rowAnchorPattern.test(row));
+  const templateRow = anchorRow ?? rows[1];
+  if (!templateRow) {
+    return params.tableXml;
+  }
+
+  const firstTemplateRow = anchorRow ? rows.indexOf(templateRow) : 1;
+  const lastTemplateRow = anchorRow
+    ? rows.reduce((last, row, rowIndex) => {
+        if (params.rowAnchorPattern.test(row)) return rowIndex;
+        return last;
+      }, firstTemplateRow)
+    : rows.length - 1;
+
+  const renderedRows = params.rowValues.map((values) => renderTableRowXml(templateRow, values));
+  const rebuiltRows = [
+    ...rows.slice(0, firstTemplateRow),
+    ...renderedRows,
+    ...rows.slice(lastTemplateRow + 1),
+  ];
+
+  if (params.headerValues && rebuiltRows[0]) {
+    rebuiltRows[0] = renderTableRowXml(rows[0] ?? rebuiltRows[0], params.headerValues);
+  }
+
+  const startOffset = params.tableXml.indexOf(rows[0] ?? "");
+  const lastRow = rows[rows.length - 1] ?? "";
+  const endOffset = params.tableXml.lastIndexOf(lastRow);
+  if (startOffset === -1 || endOffset === -1) return params.tableXml;
+
+  return `${params.tableXml.slice(0, startOffset)}${rebuiltRows.join("")}${params.tableXml.slice(
+    endOffset + lastRow.length,
+  )}`;
+}
+
+function replaceSectionBodyByHeading(
+  documentXml: string,
+  headingText: string,
+  buildBodyBlocks: (blocks: DocxBodyBlock[], headingIndex: number, sectionEnd: number) => string[],
+) {
+  const { prefix, suffix, blocks } = parseDocxBodyBlocks(documentXml);
+  const headingIndex = blocks.findIndex(
+    (block) =>
+      block.type === "paragraph" &&
+      normalizeWhitespace(block.text) === normalizeWhitespace(headingText) &&
+      isHeadingBlock(block),
+  );
+  if (headingIndex === -1) return documentXml;
+
+  const sectionEnd = blocks.findIndex((block, index) => index > headingIndex && isHeadingBlock(block));
+  const effectiveSectionEnd = sectionEnd === -1 ? blocks.length : sectionEnd;
+  const rebuiltBlocks = [
+    ...blocks.slice(0, headingIndex + 1).map((block) => block.xml),
+    ...buildBodyBlocks(blocks, headingIndex, effectiveSectionEnd),
+    ...blocks.slice(effectiveSectionEnd).map((block) => block.xml),
+  ];
+
+  return `${prefix}${rebuiltBlocks.join("")}${suffix}`;
+}
+
+function splitDocumentXml(documentXml: string) {
+  const bodyStart = documentXml.indexOf("<w:body>");
+  const bodyEnd = documentXml.lastIndexOf("</w:body>");
+
+  if (bodyStart === -1 || bodyEnd === -1) {
+    throw new Error("Invalid DOCX document.xml: missing <w:body>");
+  }
+
+  return {
+    prefix: documentXml.slice(0, bodyStart + "<w:body>".length),
+    bodyXml: documentXml.slice(bodyStart + "<w:body>".length, bodyEnd),
+    suffix: documentXml.slice(bodyEnd),
+  };
+}
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractBalancedTagXml(xml: string, startIndex: number, tag: string) {
+  const matcher = new RegExp(`<(/?)${escapeRegex(tag)}\\b[^>]*>`, "g");
+  matcher.lastIndex = startIndex;
+
+  let depth = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = matcher.exec(xml)) !== null) {
+    depth += match[1] ? -1 : 1;
+    if (depth === 0) {
+      return xml.slice(startIndex, match.index + match[0].length);
+    }
+  }
+
+  return undefined;
+}
+
+function extractBalancedTagBlocks(xml: string, tag: string) {
+  const matcher = new RegExp(`<${escapeRegex(tag)}\\b`, "g");
+  const blocks: string[] = [];
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = matcher.exec(xml)) !== null) {
+    if (match.index < cursor) continue;
+    const blockXml = extractBalancedTagXml(xml, match.index, tag);
+    if (!blockXml) break;
+
+    blocks.push(blockXml);
+    cursor = match.index + blockXml.length;
+    matcher.lastIndex = cursor;
+  }
+
+  return blocks;
+}
+
+function extractBodyBlockXml(bodyXml: string, startIndex: number, tag: string) {
+  if (tag === "w:p") {
+    const endIndex = bodyXml.indexOf("</w:p>", startIndex);
+    return endIndex === -1 ? undefined : bodyXml.slice(startIndex, endIndex + "</w:p>".length);
+  }
+
+  if (tag === "w:sectPr") {
+    const endIndex = bodyXml.indexOf("</w:sectPr>", startIndex);
+    return endIndex === -1
+      ? undefined
+      : bodyXml.slice(startIndex, endIndex + "</w:sectPr>".length);
+  }
+
+  if (tag === "w:tbl") {
+    return extractBalancedTagXml(bodyXml, startIndex, tag);
+  }
+
+  return undefined;
+}
+
+function parseDocxBodyBlocks(documentXml: string) {
+  const { prefix, bodyXml, suffix } = splitDocumentXml(documentXml);
+  const blocks: DocxBodyBlock[] = [];
+  const matcher = /<(w:p|w:tbl|w:sectPr)\b/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = matcher.exec(bodyXml)) !== null) {
+    const startIndex = match.index;
+    if (startIndex < cursor) continue;
+    const tag = match[1] ?? "";
+    const xml = extractBodyBlockXml(bodyXml, startIndex, tag);
+    if (!xml) break;
+
+    blocks.push({
+      type: tag === "w:p" ? "paragraph" : tag === "w:tbl" ? "table" : "section",
+      xml,
+      text: extractXmlText(xml),
+    });
+
+    cursor = startIndex + xml.length;
+    matcher.lastIndex = cursor;
+  }
+
+  return { prefix, suffix, blocks };
+}
+
+function ensureXmlSpaceAttribute(attributes: string, value: string) {
+  if (!value || !/(^\s)|(\s$)|\s{2,}|\n|\t/.test(value) || attributes.includes('xml:space="preserve"')) {
+    return attributes;
+  }
+  return `${attributes} xml:space="preserve"`;
+}
+
+function replaceParagraphTextPlaceholders(
+  paragraphXml: string,
+  placeholderValues: Record<string, string>,
+  options?: { stripResidualPlaceholders?: boolean },
+) {
+  const textNodePattern = /<w:t\b([^>]*)>([\s\S]*?)<\/w:t>/g;
+  const textNodes = [...paragraphXml.matchAll(textNodePattern)];
+  if (textNodes.length === 0) return paragraphXml;
+
+  const combinedText = textNodes
+    .map((match) => decodeXmlEntities(match[2] ?? ""))
+    .join("");
+  if (!combinedText.includes("{{")) return paragraphXml;
+
+  let replacedText = combinedText;
+  for (const [key, rawValue] of Object.entries(placeholderValues)) {
+    replacedText = replacedText.split(`{{${key}}}`).join(rawValue.trim());
+  }
+  if (options?.stripResidualPlaceholders) {
+    replacedText = replacedText.replace(/\{\{[^{}]+\}\}/g, "");
+  }
+  if (replacedText === combinedText) return paragraphXml;
+
+  let wroteReplacement = false;
+  return paragraphXml.replace(textNodePattern, (_match, rawAttributes = "") => {
+    if (wroteReplacement) {
+      return `<w:t${rawAttributes}></w:t>`;
+    }
+
+    wroteReplacement = true;
+    const attributes = ensureXmlSpaceAttribute(rawAttributes, replacedText);
+    return `<w:t${attributes}>${escapeXmlText(replacedText)}</w:t>`;
+  });
+}
+
+export function replaceDocxPlaceholders(
+  xml: string,
+  placeholderValues: Record<string, string>,
+  options?: { stripResidualPlaceholders?: boolean },
+) {
+  return xml.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (paragraphXml) =>
+    replaceParagraphTextPlaceholders(paragraphXml, placeholderValues, options),
+  );
+}
+
+function renderLocalPlaceholderXml(xml: string, placeholderValues: Record<string, string>) {
+  const normalizedValues = Object.fromEntries(
+    Object.entries(placeholderValues).map(([key, rawValue]) => [key, rawValue.trim()]),
+  );
+
+  if (normalizedValues["功能标题1"] && !normalizedValues["功能名称1"]) {
+    normalizedValues["功能名称1"] = normalizeWhitespace(normalizedValues["功能标题1"]);
+  }
+
+  let rendered = replaceDocxPlaceholders(xml, normalizedValues, {
+    stripResidualPlaceholders: true,
+  });
+  rendered = rendered.replace(/\{\{[^{}]+\}\}/g, "");
+  rendered = removeEmptyTableRows(rendered);
+  rendered = removeEmptyParagraphs(rendered);
+  return rendered;
+}
+
+function buildFeatureBodyParagraphs(
+  templateParagraphXml: string,
+  items: string[],
+  formatter: (item: string, index: number) => string,
+) {
+  const normalizedItems = items.map((item) => normalizeWhitespace(item)).filter(Boolean);
+  if (normalizedItems.length === 0) {
+    return [
+      buildPlainParagraphXml(templateParagraphXml, USER_REQUIREMENTS_BASE_PROFILE.featureBlock.fallbackText, {
+        paragraphStyleId: BODY_STYLE_ID,
+      }),
+    ];
+  }
+
+  return normalizedItems.map((item, index) =>
+    buildPlainParagraphXml(templateParagraphXml, formatter(item, index), {
+      paragraphStyleId: BODY_STYLE_ID,
+    }),
+  );
+}
+
+function buildFeatureIoRows(records: DocxFeatureRecord[]) {
+  if (records.length > 0) {
+    return records.map((record, index) => [
+      String(index + 1),
+      record.name || "待补充",
+      record.type || "-",
+      record.required || "-",
+      record.enumValues || "-",
+      record.note || "-",
+    ]);
+  }
+
+  return [["1", "待补充", "-", "-", "-", USER_REQUIREMENTS_BASE_PROFILE.featureBlock.fallbackText]];
+}
+
+function renderFeatureBlocks(documentXml: string, featureBlocks: DocxFeatureBlockModel[]) {
+  if (featureBlocks.length === 0) {
+    return documentXml;
+  }
+
+  const { prefix, suffix, blocks } = parseDocxBodyBlocks(documentXml);
+  const featureStart = blocks.findIndex(
+    (block) =>
+      block.type === "paragraph" &&
+      !block.text.includes("PAGEREF") &&
+      block.text.includes(FEATURE_BLOCK_START_ANCHOR),
+  );
+  const featureEnd = blocks.findIndex(
+    (block, index) =>
+      index > featureStart &&
+      block.type === "paragraph" &&
+      !block.text.includes("PAGEREF") &&
+      normalizeWhitespace(block.text) === FEATURE_BLOCK_END_ANCHOR,
+  );
+
+  if (featureStart === -1 || featureEnd === -1) {
+    return documentXml;
+  }
+
+  const featureTemplateBlocks = blocks.slice(featureStart, featureEnd);
+  const bodyParagraphTemplate =
+    blocks.find(
+      (block) =>
+        block.type === "paragraph" &&
+        getParagraphStyleId(block.xml) === BODY_STYLE_ID &&
+        !normalizeWhitespace(block.text),
+    )?.xml ??
+    blocks.find(
+      (block) =>
+        block.type === "paragraph" &&
+        getParagraphStyleId(block.xml) === BODY_STYLE_ID,
+    )?.xml ??
+    `<w:p><w:pPr><w:pStyle w:val="${BODY_STYLE_ID}"/></w:pPr><w:r><w:t></w:t></w:r></w:p>`;
+  const featureHeadingTemplate =
+    featureTemplateBlocks.find(
+      (block) =>
+        block.type === "paragraph" &&
+        block.text.includes(FEATURE_BLOCK_START_ANCHOR),
+    )?.xml ?? bodyParagraphTemplate;
+  const subheadingTemplateByText = new Map(
+    featureTemplateBlocks
+      .filter((block) => block.type === "paragraph")
+      .map((block) => [normalizeWhitespace(block.text), block.xml]),
+  );
+  const featureTables = featureTemplateBlocks.filter((block) => block.type === "table");
+  const inputTableTemplate = featureTables[0]?.xml ?? "";
+  const outputTableTemplate = featureTables[1]?.xml ?? "";
+
+  const renderedFeatureXml = featureBlocks
+    .map((feature, featureIndex) => {
+      const processParagraphs = buildFeatureBodyParagraphs(
+        bodyParagraphTemplate,
+        feature.processItems,
+        (item, index) => `${index + 1}、${item}`,
+      );
+      const detailParagraphs = buildFeatureBodyParagraphs(
+        bodyParagraphTemplate,
+        feature.detailItems,
+        (item) => item,
+      );
+      const ruleParagraphs = buildFeatureBodyParagraphs(
+        bodyParagraphTemplate,
+        feature.ruleItems,
+        (item, index) => `（${index + 1}）${item}`,
+      );
+
+      const featureHeading = buildPlainParagraphXml(
+        featureHeadingTemplate,
+        `3.2.${feature.index} 业务功能${toChineseFeatureLabel(featureIndex + 1)}：${feature.name}`,
+        {
+          preserveParagraphProperties: true,
+          removeNumbering: true,
+          paragraphStyleId: BASE_DOCX_STYLES.heading3,
+        },
+      );
+      const processHeading = buildPlainParagraphXml(
+        subheadingTemplateByText.get("业务流程") ?? featureHeadingTemplate,
+        `3.2.${feature.index}.1 业务流程`,
+        {
+          preserveParagraphProperties: true,
+          removeNumbering: true,
+          paragraphStyleId: BASE_DOCX_STYLES.heading4,
+        },
+      );
+      const detailHeading = buildPlainParagraphXml(
+        subheadingTemplateByText.get("业务功能详述") ?? featureHeadingTemplate,
+        `3.2.${feature.index}.2 业务功能详述`,
+        {
+          preserveParagraphProperties: true,
+          removeNumbering: true,
+          paragraphStyleId: BASE_DOCX_STYLES.heading4,
+        },
+      );
+      const ruleHeading = buildPlainParagraphXml(
+        subheadingTemplateByText.get("业务规则") ?? featureHeadingTemplate,
+        `3.2.${feature.index}.3 业务规则`,
+        {
+          preserveParagraphProperties: true,
+          removeNumbering: true,
+          paragraphStyleId: BASE_DOCX_STYLES.heading4,
+        },
+      );
+      const ioHeading = buildPlainParagraphXml(
+        subheadingTemplateByText.get("输入和输出") ?? featureHeadingTemplate,
+        `3.2.${feature.index}.4 输入和输出`,
+        {
+          preserveParagraphProperties: true,
+          removeNumbering: true,
+          paragraphStyleId: BASE_DOCX_STYLES.heading4,
+        },
+      );
+      const inputLabel = buildPlainParagraphXml(
+        subheadingTemplateByText.get("输入要素") ?? bodyParagraphTemplate,
+        "输入要素",
+        {
+          preserveParagraphProperties: true,
+          removeNumbering: true,
+          preserveFirstRunProperties: true,
+        },
+      );
+      const outputLabel = buildPlainParagraphXml(
+        subheadingTemplateByText.get("输出要素") ?? bodyParagraphTemplate,
+        "输出要素",
+        {
+          preserveParagraphProperties: true,
+          removeNumbering: true,
+          preserveFirstRunProperties: true,
+        },
+      );
+
+      const inputTable = inputTableTemplate
+        ? renderTableFromTemplate({
+            tableXml: inputTableTemplate,
+            rowAnchorPattern: /\{\{输入字段\d+\}\}/,
+            rowValues: buildFeatureIoRows(feature.inputRecords),
+          })
+        : "";
+      const outputTable = outputTableTemplate
+        ? renderTableFromTemplate({
+            tableXml: outputTableTemplate,
+            rowAnchorPattern: /\{\{输出字段\d+\}\}/,
+            rowValues: buildFeatureIoRows(feature.outputRecords),
+          })
+        : "";
+
+      return [
+        featureHeading,
+        processHeading,
+        ...processParagraphs,
+        detailHeading,
+        ...detailParagraphs,
+        ruleHeading,
+        ...ruleParagraphs,
+        ioHeading,
+        inputLabel,
+        inputTable,
+        outputLabel,
+        outputTable,
+      ]
+        .filter(Boolean)
+        .join("");
+    })
+    .join("");
+
+  const rebuiltBodyXml = [
+    ...blocks.slice(0, featureStart).map((block) => block.xml),
+    renderedFeatureXml,
+    ...blocks.slice(featureEnd).map((block) => block.xml),
+  ].join("");
+
+  return `${prefix}${rebuiltBodyXml}${suffix}`;
+}
+
+function expandFeatureBlocks(documentXml: string, featureBlocks: DocxFeatureBlockModel[]) {
+  return {
+    documentXml: renderFeatureBlocks(documentXml, featureBlocks),
+    inputCapacity: USER_REQUIREMENTS_BASE_PROFILE.featureBlock.inputCapacity,
+    outputCapacity: USER_REQUIREMENTS_BASE_PROFILE.featureBlock.outputCapacity,
+  };
+}
+
+export function expandDepartmentRows(documentXml: string, records: Array<{ department: string; duty: string }>) {
+  if (records.length === 0 || !documentXml.includes(DEPARTMENT_ROW_ANCHOR)) {
+    return documentXml;
+  }
+
+  const renderDepartmentTable = (tableXml: string) => {
+    const rows = extractBalancedTagBlocks(tableXml, "w:tr");
+    const templateRow = rows.find((row) => row.includes(DEPARTMENT_ROW_ANCHOR));
+    if (!templateRow) {
+      return tableXml;
+    }
+
+    const normalizedTemplateRow = templateRow
+      .replace(/\{\{部门\d+\}\}/g, "{{部门1}}")
+      .replace(/\{\{职责\d+\}\}/g, "{{职责1}}");
+    const renderedRows = records.map((record) =>
+      renderLocalPlaceholderXml(normalizedTemplateRow, {
+        部门1: record.department,
+        职责1: record.duty,
+      }),
+    );
+
+    const firstTemplateRow = rows.indexOf(templateRow);
+    const lastTemplateRow = rows.reduce((last, row, rowIndex) => {
+      if (row.includes("{{部门")) return rowIndex;
+      return last;
+    }, firstTemplateRow);
+    const startRow = rows[firstTemplateRow] ?? "";
+    const endRow = rows[lastTemplateRow] ?? "";
+    const startOffset = tableXml.indexOf(startRow);
+    const endOffset = tableXml.indexOf(endRow, startOffset) + endRow.length;
+    if (startOffset === -1 || endOffset < startOffset) {
+      return tableXml;
+    }
+
+    return `${tableXml.slice(0, startOffset)}${renderedRows.join("")}${tableXml.slice(endOffset)}`;
+  };
+
+  if (!documentXml.includes("<w:body>")) {
+    return renderDepartmentTable(documentXml);
+  }
+
+  const { prefix, suffix, blocks } = parseDocxBodyBlocks(documentXml);
+  let didExpand = false;
+
+  const rebuiltBlocks = blocks.map((block) => {
+    if (block.type !== "table" || !block.xml.includes(DEPARTMENT_ROW_ANCHOR)) {
+      return block.xml;
+    }
+
+    const expandedTableXml = renderDepartmentTable(block.xml);
+    if (expandedTableXml !== block.xml) {
+      didExpand = true;
+    }
+
+    return expandedTableXml;
+  });
+
+  if (!didExpand) {
+    return documentXml;
+  }
+
+  return `${prefix}${rebuiltBlocks.join("")}${suffix}`;
+}
+
+function removeLegacyDocxParagraphs(documentXml: string) {
+  return documentXml.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (paragraphXml) => {
+    const text = normalizeWhitespace(extractXmlText(paragraphXml));
+    if (!text && /<w:object|<w:pict/.test(paragraphXml)) return "";
+    if (USER_REQUIREMENTS_BASE_PROFILE.legacyTerms.some((term) => text.includes(term))) {
+      return "";
+    }
+    if (/^SR[_-]?\d+/i.test(text) || text.includes("SR_{{")) return "";
+    if (/<w:object|<w:pict/.test(paragraphXml)) return "";
+    return paragraphXml;
+  });
+}
+
+function restructureTermsSection(
+  documentXml: string,
+  buildResult?: DocxTemplateBuildResult,
+) {
+  if (!buildResult) return documentXml;
+
+  const headingText = findSectionContract(buildResult.profile, "1.4").title;
+  return replaceSectionBodyByHeading(documentXml, headingText, (blocks, headingIndex) => {
+    const departmentHeadingIndex = blocks.findIndex(
+      (block) =>
+        block.type === "paragraph" &&
+        normalizeWhitespace(block.text) === "项目参与部门及职责" &&
+        isHeadingBlock(block),
+    );
+    const departmentTable = departmentHeadingIndex === -1
+      ? undefined
+      : blocks
+          .slice(departmentHeadingIndex + 1)
+          .find((block) => block.type === "table")?.xml;
+
+    if (!departmentTable) {
+      const paragraphTemplate =
+        blocks.find(
+          (block) =>
+            block.type === "paragraph" &&
+            getParagraphStyleId(block.xml) === BODY_STYLE_ID &&
+            !normalizeWhitespace(block.text),
+        )?.xml ??
+        blocks[headingIndex]?.xml ??
+        `<w:p><w:pPr><w:pStyle w:val="${BODY_STYLE_ID}"/></w:pPr><w:r><w:t></w:t></w:r></w:p>`;
+      return buildResult.termRecords.map((record) =>
+        buildPlainParagraphXml(paragraphTemplate, `${record.term}：${record.definition}`, {
+          paragraphStyleId: BODY_STYLE_ID,
+        }),
+      );
+    }
+
+    return [
+      renderTableFromTemplate({
+        tableXml: departmentTable,
+        rowAnchorPattern: /\{\{部门\d+\}\}/,
+        headerValues: ["术语", "定义"],
+        rowValues: buildResult.termRecords.map((record) => [record.term, record.definition]),
+      }),
+    ];
+  });
+}
+
+function restructureBusinessProcessSection(
+  documentXml: string,
+  buildResult?: DocxTemplateBuildResult,
+) {
+  if (!buildResult) return documentXml;
+  const processSection = buildResult.sectionValues.find((section) => section.id === "2.2");
+  if (!processSection) return documentXml;
+
+  const processItems = buildResult.featureBlocks[0]?.processItems ?? [];
+  const processSummary =
+    processItems.length > 0
+      ? `流程摘要：${processItems.slice(0, 6).join("；")}。`
+      : "流程摘要：按既定业务链路完成受理、处理、校验与结果输出。";
+  const flowPlaceholder = buildFlowchartPlaceholder(
+    processSection.content,
+    "整体业务处理流程",
+  );
+
+  return replaceSectionBodyByHeading(documentXml, processSection.title, (blocks, headingIndex) => {
+    const paragraphTemplate =
+      blocks.find(
+        (block) =>
+          block.type === "paragraph" &&
+          getParagraphStyleId(block.xml) === BODY_STYLE_ID &&
+          !normalizeWhitespace(block.text),
+      )?.xml ??
+      blocks[headingIndex]?.xml ??
+      `<w:p><w:pPr><w:pStyle w:val="${BODY_STYLE_ID}"/></w:pPr><w:r><w:t></w:t></w:r></w:p>`;
+
+    return [
+      buildPlainParagraphXml(paragraphTemplate, processSummary, {
+        paragraphStyleId: BODY_STYLE_ID,
+      }),
+      buildPlainParagraphXml(paragraphTemplate, flowPlaceholder, {
+        paragraphStyleId: BODY_STYLE_ID,
+      }),
+    ];
+  });
+}
+
+function restructureCurrentStateSection(
+  documentXml: string,
+  buildResult?: DocxTemplateBuildResult,
+) {
+  if (!buildResult) return documentXml;
+
+  const overviewValue = buildResult.sectionValues.find((section) => section.id === "2.3.1");
+  const problemValue = buildResult.sectionValues.find((section) => section.id === "2.3.2");
+  if (!overviewValue || !problemValue) return documentXml;
+
+  const { prefix, suffix, blocks } = parseDocxBodyBlocks(documentXml);
+  const sectionStart = blocks.findIndex(
+    (block) =>
+      block.type === "paragraph" &&
+      getParagraphStyleId(block.xml) === BASE_DOCX_STYLES.heading2 &&
+      normalizeWhitespace(block.text) === "现状和存在的问题",
+  );
+  const sectionEnd = blocks.findIndex(
+    (block, index) =>
+      index > sectionStart &&
+      block.type === "paragraph" &&
+      getParagraphStyleId(block.xml) === BASE_DOCX_STYLES.heading2 &&
+      normalizeWhitespace(block.text) === "项目参与部门及职责",
+  );
+
+  if (sectionStart === -1 || sectionEnd === -1) return documentXml;
+
+  const sectionBlocks = blocks.slice(sectionStart + 1, sectionEnd);
+  const headingBlocks = sectionBlocks.filter(
+    (block) => block.type === "paragraph" && getParagraphStyleId(block.xml) === BASE_DOCX_STYLES.heading3,
+  );
+  if (headingBlocks.length < 2) return documentXml;
+
+  const bodyTemplate =
+    sectionBlocks.find(
+      (block) =>
+        block.type === "paragraph" &&
+        getParagraphStyleId(block.xml) === BODY_STYLE_ID &&
+        !normalizeWhitespace(block.text),
+    )?.xml ??
+    blocks[sectionStart].xml;
+
+  const rebuiltBlocks = [
+    ...blocks.slice(0, sectionStart + 1).map((block) => block.xml),
+    buildPlainParagraphXml(headingBlocks[0]?.xml ?? bodyTemplate, overviewValue.title, {
+      preserveParagraphProperties: true,
+      paragraphStyleId: BASE_DOCX_STYLES.heading3,
+    }),
+    buildPlainParagraphXml(bodyTemplate, overviewValue.content, { paragraphStyleId: BODY_STYLE_ID }),
+    buildPlainParagraphXml(headingBlocks[1]?.xml ?? bodyTemplate, problemValue.title, {
+      preserveParagraphProperties: true,
+      paragraphStyleId: BASE_DOCX_STYLES.heading3,
+    }),
+    buildPlainParagraphXml(bodyTemplate, problemValue.content, { paragraphStyleId: BODY_STYLE_ID }),
+    ...blocks.slice(sectionEnd).map((block) => block.xml),
+  ];
+
+  return `${prefix}${rebuiltBlocks.join("")}${suffix}`;
+}
+
+function restructureFunctionCategorySection(
+  documentXml: string,
+  buildResult?: DocxTemplateBuildResult,
+) {
+  if (!buildResult) return documentXml;
+
+  const functionCategoryValue = buildResult.sectionValues.find((section) => section.id === "3.1");
+  if (!functionCategoryValue?.content) return documentXml;
+
+  return replaceSectionBodyByHeading(documentXml, functionCategoryValue.title, (blocks, headingIndex, sectionEnd) => {
+    const sectionBlocks = blocks.slice(headingIndex + 1, sectionEnd);
+    const tableTemplate = sectionBlocks.find(
+      (block) => block.type === "table" && block.xml.includes(FUNCTION_CATALOG_ROW_ANCHOR),
+    )?.xml;
+    const paragraphTemplate =
+      sectionBlocks.find(
+        (block) =>
+          block.type === "paragraph" &&
+          getParagraphStyleId(block.xml) === BODY_STYLE_ID &&
+          !normalizeWhitespace(block.text),
+      )?.xml ??
+      blocks[headingIndex]?.xml ??
+      `<w:p><w:pPr><w:pStyle w:val="${BODY_STYLE_ID}"/></w:pPr><w:r><w:t></w:t></w:r></w:p>`;
+
+    if (!tableTemplate) {
+      return [
+        buildPlainParagraphXml(paragraphTemplate, functionCategoryValue.content, {
+          paragraphStyleId: BODY_STYLE_ID,
+        }),
+      ];
+    }
+
+    return [
+      renderTableFromTemplate({
+        tableXml: tableTemplate,
+        rowAnchorPattern: /\{\{功能模块\d+\}\}/,
+        headerValues: ["序号", "功能模块", "功能名称", "备注"],
+        rowValues: buildResult.functionCatalogRecords.map((record) => [
+          record.sequence,
+          record.module,
+          record.name,
+          record.note,
+        ]),
+      }),
+    ];
+  });
+}
+
+function restructureSimpleBodySections(
+  documentXml: string,
+  buildResult: DocxTemplateBuildResult | undefined,
+  sectionIds: string[],
+) {
+  if (!buildResult) return documentXml;
+
+  const targetSections = buildResult.sectionValues.filter((section) => sectionIds.includes(section.id));
+  if (targetSections.length === 0) return documentXml;
+
+  const targetByTitle = new Map(
+    targetSections.map((section) => [normalizeWhitespace(section.title), section]),
+  );
+  const { prefix, suffix, blocks } = parseDocxBodyBlocks(documentXml);
+  const rebuiltBlocks: string[] = [];
+
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    const styleId = getParagraphStyleId(block.xml);
+    const targetSection =
+      block.type === "paragraph" &&
+      SECTION_HEADING_STYLE_IDS.includes(styleId as (typeof SECTION_HEADING_STYLE_IDS)[number])
+        ? targetByTitle.get(normalizeWhitespace(block.text))
+        : undefined;
+
+    if (!targetSection) {
+      rebuiltBlocks.push(block.xml);
+      continue;
+    }
+
+    rebuiltBlocks.push(block.xml);
+
+    let nextIndex = index + 1;
+    let bodyTemplate = block.xml;
+    while (nextIndex < blocks.length) {
+      const nextBlock = blocks[nextIndex];
+      const nextStyleId = nextBlock.type === "paragraph" ? getParagraphStyleId(nextBlock.xml) : "";
+      const isNextHeading =
+        nextBlock.type === "paragraph" &&
+        HEADING_STYLE_IDS.includes(nextStyleId as (typeof HEADING_STYLE_IDS)[number]) &&
+        normalizeWhitespace(nextBlock.text);
+
+      if (isNextHeading) break;
+
+      if (
+        nextBlock.type === "paragraph" &&
+        !HEADING_STYLE_IDS.includes(nextStyleId as (typeof HEADING_STYLE_IDS)[number]) &&
+        (!normalizeWhitespace(nextBlock.text) || nextBlock.text.includes("{{"))
+      ) {
+        bodyTemplate = nextBlock.xml;
+      }
+
+      nextIndex += 1;
+    }
+
+    rebuiltBlocks.push(
+      buildPlainParagraphXml(bodyTemplate, targetSection.content, {
+        paragraphStyleId: BODY_STYLE_ID,
+      }),
+    );
+    index = nextIndex - 1;
+  }
+
+  return `${prefix}${rebuiltBlocks.join("")}${suffix}`;
+}
+
+function applyProfileDrivenShellTransforms(
+  documentXml: string,
+  buildResult?: DocxTemplateBuildResult,
+) {
+  let transformed = documentXml;
+  transformed = restructureTermsSection(transformed, buildResult);
+  transformed = restructureBusinessProcessSection(transformed, buildResult);
+  transformed = restructureCurrentStateSection(transformed, buildResult);
+  transformed = restructureFunctionCategorySection(transformed, buildResult);
+  transformed = restructureSimpleBodySections(transformed, buildResult, [
+    "3.3.1",
+    "3.3.2",
+    "3.3.3",
+    "3.3.4",
+    "3.3.5",
+    "3.3.6",
+    "3.3.7",
+    "3.3.8",
+    "3.3.9",
+    "4.1",
+    "4.2",
+    "4.3",
+    "4.4",
+    "4.5",
+    "4.6",
+    "4.7",
+    "4.8",
+    "4.9",
+    "4.10",
+    "4.11",
+    "4.12",
+    "4.13",
+    "4.14",
+    "4.15",
+    "5.1",
+    "5.2",
+  ]);
+  return transformed;
+}
+
+async function listExtractedFiles(dirPath: string) {
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+  const files: string[] = [];
+
+  for (const entry of entries) {
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await listExtractedFiles(fullPath)));
+      continue;
+    }
+    files.push(fullPath);
+  }
+
+  return files;
+}
+
+async function enableUpdateFieldsOnOpen(tempDir: string) {
+  const settingsPath = path.join(tempDir, "word", "settings.xml");
+  const settingsXml = await fs.readFile(settingsPath, "utf8").catch(() => "");
+  if (!settingsXml) return;
+
+  const updatedXml = settingsXml.includes("<w:updateFields")
+    ? settingsXml.replace(/<w:updateFields\b[^>]*w:val="[^"]*"[^/]*\/>/, '<w:updateFields w:val="true"/>')
+    : settingsXml.replace("</w:settings>", '<w:updateFields w:val="true"/></w:settings>');
+
+  await fs.writeFile(settingsPath, updatedXml, "utf8");
+}
+
+async function docxTargetExists(wordDir: string, target: string) {
+  if (target.startsWith("http://") || target.startsWith("https://")) {
+    return true;
+  }
+
+  return fs
+    .access(path.resolve(wordDir, target))
+    .then(() => true)
+    .catch(() => false);
+}
+
+async function readDocxPackageState(tempDir: string, documentXml?: string) {
+  const wordDir = path.join(tempDir, "word");
+  const relsPath = path.join(wordDir, "_rels", "document.xml.rels");
+  const relsXml = await fs.readFile(relsPath, "utf8").catch(() => "");
+  const currentDocumentXml =
+    documentXml ?? (await fs.readFile(path.join(wordDir, "document.xml"), "utf8").catch(() => ""));
+
+  const relationships = [...relsXml.matchAll(/<Relationship\b[^>]*Id="([^"]+)"[^>]*Type="([^"]+)"[^>]*Target="([^"]+)"[^>]*/g)].map(
+    (match) => ({
+      id: match[1] ?? "",
+      type: match[2] ?? "",
+      target: match[3] ?? "",
+    }),
+  );
+
+  const referencedIds = new Set<string>([
+    ...[...currentDocumentXml.matchAll(/\br:id="([^"]+)"/g)].map((match) => match[1] ?? ""),
+    ...[...currentDocumentXml.matchAll(/\br:embed="([^"]+)"/g)].map((match) => match[1] ?? ""),
+    ...[...currentDocumentXml.matchAll(/\br:link="([^"]+)"/g)].map((match) => match[1] ?? ""),
+  ]);
+  const removableTypes = [
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject",
+  ];
+
+  return {
+    wordDir,
+    relsPath,
+    relsXml,
+    currentDocumentXml,
+    relationships,
+    referencedIds,
+    removableTypes,
+  };
+}
+
+async function repairDocxPackageRelations(tempDir: string, documentXml?: string): Promise<DocxRelationIntegrity> {
+  const { wordDir, relsPath, relsXml, currentDocumentXml, relationships, referencedIds, removableTypes } =
+    await readDocxPackageState(tempDir, documentXml);
+
+  const missingTargets: string[] = [];
+  const removedRelationshipIds: string[] = [];
+  const keptTargets = new Set<string>();
+  const relationshipEntries = [...relsXml.matchAll(/<Relationship\b[^>]*\/>/g)];
+  const prefix = relationshipEntries[0]
+    ? relsXml.slice(0, relationshipEntries[0].index)
+    : relsXml;
+  const suffix = relationshipEntries.length > 0
+    ? relsXml.slice(
+        (relationshipEntries[relationshipEntries.length - 1]?.index ?? 0) +
+          (relationshipEntries[relationshipEntries.length - 1]?.[0].length ?? 0),
+      )
+    : "";
+  const keptRelationshipXml: string[] = [];
+
+  for (const relationship of relationships) {
+    const localTarget = path.resolve(wordDir, relationship.target);
+    const localExists = await docxTargetExists(wordDir, relationship.target);
+
+    if (!localExists) {
+      missingTargets.push(relationship.target);
+    }
+
+    const shouldRemove =
+      !localExists ||
+      (removableTypes.includes(relationship.type) && !referencedIds.has(relationship.id));
+
+    if (shouldRemove) {
+      removedRelationshipIds.push(relationship.id);
+      continue;
+    }
+
+    keptRelationshipXml.push(
+      `<Relationship Id="${relationship.id}" Type="${relationship.type}" Target="${relationship.target}"/>`,
+    );
+    if (/^(media|embeddings)\//.test(relationship.target)) {
+      keptTargets.add(localTarget);
+    }
+  }
+
+  const filteredRelsXml = relationshipEntries.length > 0
+    ? `${prefix}${keptRelationshipXml.join("")}${suffix}`
+    : relsXml;
+
+  await fs.writeFile(relsPath, filteredRelsXml, "utf8");
+
+  const removedMediaTargets: string[] = [];
+  const removedEmbeddingTargets: string[] = [];
+  const extractedFiles = await listExtractedFiles(wordDir);
+
+  for (const filePath of extractedFiles) {
+    if (!/[/\\](media|embeddings)[/\\]/.test(filePath)) continue;
+    if (keptTargets.has(filePath)) continue;
+    await fs.rm(filePath, { force: true });
+    const relativeTarget = path.relative(wordDir, filePath).replace(/\\/g, "/");
+    if (relativeTarget.startsWith("media/")) removedMediaTargets.push(relativeTarget);
+    if (relativeTarget.startsWith("embeddings/")) removedEmbeddingTargets.push(relativeTarget);
+  }
+
+  return {
+    missingTargets,
+    removedRelationshipIds,
+    removedMediaTargets,
+    removedEmbeddingTargets,
+    staleObjectCount: (currentDocumentXml.match(/<w:object/g) ?? []).length,
+    isClean: missingTargets.length === 0,
+  };
+}
+
+async function verifyDocxPackageRelations(tempDir: string, documentXml?: string): Promise<DocxRelationIntegrity> {
+  const { wordDir, currentDocumentXml, relationships } = await readDocxPackageState(tempDir, documentXml);
+  const missingTargets: string[] = [];
+
+  for (const relationship of relationships) {
+    const localExists = await docxTargetExists(wordDir, relationship.target);
+    if (!localExists) {
+      missingTargets.push(relationship.target);
+    }
+  }
+
+  return {
+    missingTargets,
+    removedRelationshipIds: [],
+    removedMediaTargets: [],
+    removedEmbeddingTargets: [],
+    staleObjectCount: (currentDocumentXml.match(/<w:object/g) ?? []).length,
+    isClean: missingTargets.length === 0,
+  };
+}
+
+function buildQualityReport(params: {
+  buildResult: DocxTemplateBuildResult;
+  finalDocumentXml: string;
+  relationIntegrity: DocxRelationIntegrity;
+}) {
+  const sectionMetrics: DocxQualitySectionMetric[] = params.buildResult.sectionValues.map((section) => {
+    const actualChars = countVisibleChars(section.content);
+    const ratio = toRatio(actualChars, section.targetChars);
+    return {
+      sectionId: section.id,
+      title: section.title,
+      targetChars: section.targetChars,
+      actualChars,
+      ratio,
+      required: section.required,
+      usedFallback: section.usedFallback,
+      withinRange: isRatioWithinRange(ratio, section.required, section.usedFallback),
+    };
+  });
+
+  const featureMetrics: DocxQualitySectionMetric[] = params.buildResult.featureBlocks.map((feature) => {
+    const actualChars =
+      countVisibleChars(joinListAsParagraph(feature.processItems)) +
+      countVisibleChars(joinListAsParagraph(feature.detailItems)) +
+      countVisibleChars(joinListAsParagraph(feature.ruleItems)) +
+      countVisibleChars(feature.inputRecords.map((record) => Object.values(record).join("")).join("")) +
+      countVisibleChars(feature.outputRecords.map((record) => Object.values(record).join("")).join(""));
+    const ratio = toRatio(actualChars, feature.targetChars);
+    return {
+      sectionId: `3.2.${feature.index}`,
+      title: `业务功能${feature.index}`,
+      targetChars: feature.targetChars,
+      actualChars,
+      ratio,
+      required: true,
+      usedFallback: feature.usedFallback,
+      withinRange: isRatioWithinRange(ratio, true, feature.usedFallback),
+    };
+  });
+
+  const requiredSectionCount =
+    sectionMetrics.filter((metric) => metric.required).length + featureMetrics.length;
+  const coveredSectionCount =
+    sectionMetrics.filter((metric) => metric.required && metric.actualChars > 0).length +
+    featureMetrics.filter((metric) => metric.actualChars > 0).length;
+
+  return {
+    profileId: params.buildResult.profile.id,
+    structureCoverageRatio: requiredSectionCount === 0 ? 1 : Number((coveredSectionCount / requiredSectionCount).toFixed(2)),
+    requiredSectionCount,
+    coveredSectionCount,
+    featureBlockCount: params.buildResult.featureBlocks.length,
+    expectedFeatureBlockCount: params.buildResult.featureBlocks.length,
+    sectionMetrics: [...sectionMetrics, ...featureMetrics],
+    tableMetrics: params.buildResult.tableMetrics,
+    placeholderResidualCount: countPlaceholderResiduals(params.finalDocumentXml),
+    legacyContentHits: scanLegacyHits(extractXmlText(params.finalDocumentXml)),
+    relationIntegrity: params.relationIntegrity,
+  } satisfies DocxQualityReport;
+}
+
 export async function fillDocxTemplate(params: {
   templatePath: string;
   outputPath: string;
   placeholderValues: Record<string, string>;
+  featureBlocks?: DocxFeatureBlockModel[];
+  departmentRecords?: Array<{ department: string; duty: string }>;
+  buildResult?: DocxTemplateBuildResult;
 }) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "reqagent-docx-template-"));
+  const templatePath = path.resolve(params.templatePath);
+  const outputPath = path.resolve(params.outputPath);
 
   try {
-    await execa("unzip", ["-q", params.templatePath, "-d", tempDir]);
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await execa("unzip", ["-q", templatePath, "-d", tempDir]);
     const documentXmlPath = path.join(tempDir, "word", "document.xml");
     let documentXml = await fs.readFile(documentXmlPath, "utf8");
 
-    for (const [key, rawValue] of Object.entries(params.placeholderValues)) {
-      const normalizedValue = rawValue.trim();
-      if (!normalizedValue) continue;
-      documentXml = documentXml.split(`{{${key}}}`).join(escapeXmlText(normalizedValue));
+    if (params.featureBlocks && params.featureBlocks.length > 0) {
+      documentXml = expandFeatureBlocks(documentXml, params.featureBlocks).documentXml;
     }
 
+    if (params.departmentRecords && params.departmentRecords.length > 0) {
+      documentXml = expandDepartmentRows(documentXml, params.departmentRecords);
+    }
+
+    documentXml = applyProfileDrivenShellTransforms(documentXml, params.buildResult);
+
+    const normalizedPlaceholderValues = Object.fromEntries(
+      Object.entries(params.placeholderValues)
+        .map(([key, rawValue]) => [key, rawValue.trim()])
+        .filter(([, value]) => Boolean(value)),
+    );
+    documentXml = replaceDocxPlaceholders(documentXml, normalizedPlaceholderValues, {
+      stripResidualPlaceholders: true,
+    });
+    documentXml = removeLegacyDocxParagraphs(documentXml);
     documentXml = documentXml.replace(/\{\{[^{}]+\}\}/g, "");
 
     // Clean up empty XML elements left behind by unfilled placeholders
@@ -1488,8 +3854,28 @@ export async function fillDocxTemplate(params: {
     documentXml = removeEmptyParagraphs(documentXml);
 
     await fs.writeFile(documentXmlPath, documentXml, "utf8");
-    await fs.rm(params.outputPath, { force: true });
-    await execa("zip", ["-qr", params.outputPath, "."], { cwd: tempDir });
+    const repairedRelationIntegrity = await repairDocxPackageRelations(tempDir, documentXml);
+    const finalRelationIntegrityCheck = await verifyDocxPackageRelations(tempDir, documentXml);
+    await enableUpdateFieldsOnOpen(tempDir);
+    const relationIntegrity = {
+      ...repairedRelationIntegrity,
+      isClean: finalRelationIntegrityCheck.missingTargets.length === 0,
+    };
+    await fs.rm(outputPath, { force: true });
+    await execa("zip", ["-qr", outputPath, "."], { cwd: tempDir });
+
+    const qualityReport = params.buildResult
+      ? buildQualityReport({
+          buildResult: params.buildResult,
+          finalDocumentXml: documentXml,
+          relationIntegrity,
+        })
+      : undefined;
+
+    return {
+      qualityReport,
+      relationIntegrity,
+    };
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
