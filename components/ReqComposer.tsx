@@ -2,12 +2,14 @@
 
 import { ComposerPrimitive, useThread, useThreadRuntime } from "@assistant-ui/react";
 import { markMessageCancelled } from "@/lib/cancel-store";
+import { ReqArrowRightIcon } from "@/components/ReqIcons";
 import styles from "@/components/ReqAgentPrimitives.module.css";
 
 type ReqComposerProps = {
   variant: "landing" | "thread";
   placeholder: string;
   hint?: string;
+  submitLabel?: string;
   className?: string;
   preview?: boolean;
   previewValue?: string;
@@ -17,28 +19,30 @@ type ReqComposerProps = {
 export function ReqComposer({
   variant,
   placeholder,
-  hint = "shift + enter 换行",
+  hint = "enter 发送",
+  submitLabel = variant === "landing" ? "开始分析" : "发送",
   className,
   preview = false,
   previewValue,
   previewRunning = false,
 }: ReqComposerProps) {
   if (preview) {
-    return <ReqComposerPreview hint={hint} previewRunning={previewRunning} previewValue={previewValue} variant={variant} placeholder={placeholder} className={className} />;
+    return <ReqComposerPreview hint={hint} previewRunning={previewRunning} previewValue={previewValue} submitLabel={submitLabel} variant={variant} placeholder={placeholder} className={className} />;
   }
 
-  return <ReqComposerRuntime hint={hint} placeholder={placeholder} variant={variant} className={className} />;
+  return <ReqComposerRuntime hint={hint} placeholder={placeholder} submitLabel={submitLabel} variant={variant} className={className} />;
 }
 
 function ReqComposerPreview({
   variant,
   placeholder,
   hint,
+  submitLabel,
   className,
   previewValue,
   previewRunning,
 }: Required<Pick<ReqComposerProps, "variant" | "placeholder" | "hint">> &
-  Pick<ReqComposerProps, "className" | "previewValue" | "previewRunning">) {
+  Pick<ReqComposerProps, "className" | "previewValue" | "previewRunning" | "submitLabel">) {
   const frameClassName = `${styles.composerFrame} ${variant === "landing" ? styles.composerLanding : styles.composerThread}`;
 
   return (
@@ -48,7 +52,7 @@ function ReqComposerPreview({
           className={`${styles.composerInput} ${variant === "landing" ? styles.composerInputLanding : styles.composerInputThread}`}
           placeholder={placeholder}
           readOnly
-          rows={variant === "landing" ? 5 : 3}
+          rows={1}
           value={previewValue ?? ""}
         />
         <div className={styles.composerActions}>
@@ -57,7 +61,14 @@ function ReqComposerPreview({
             disabled
             type="button"
           >
-            {previewRunning ? "停止" : "发送"}
+            {previewRunning ? (
+              "停止"
+            ) : (
+              <>
+                <ReqArrowRightIcon className={styles.composerActionIcon} />
+                <span>{submitLabel}</span>
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -70,8 +81,10 @@ function ReqComposerRuntime({
   variant,
   placeholder,
   hint,
+  submitLabel,
   className,
-}: Required<Pick<ReqComposerProps, "variant" | "placeholder" | "hint">> & Pick<ReqComposerProps, "className">) {
+}: Required<Pick<ReqComposerProps, "variant" | "placeholder" | "hint">> &
+  Pick<ReqComposerProps, "className" | "submitLabel">) {
   const frameClassName = `${styles.composerFrame} ${variant === "landing" ? styles.composerLanding : styles.composerThread}`;
 
   return (
@@ -80,12 +93,12 @@ function ReqComposerRuntime({
         <ComposerPrimitive.Input
           className={`${styles.composerInput} ${variant === "landing" ? styles.composerInputLanding : styles.composerInputThread}`}
           placeholder={placeholder}
-          rows={variant === "landing" ? 5 : 3}
+          rows={1}
           submitMode="enter"
         />
 
         <div className={styles.composerActions}>
-          <ComposerSendButton />
+          <ComposerSendButton submitLabel={submitLabel} />
         </div>
       </div>
 
@@ -94,7 +107,7 @@ function ReqComposerRuntime({
   );
 }
 
-function ComposerSendButton() {
+function ComposerSendButton({ submitLabel }: { submitLabel?: string }) {
   const isRunning = useThread((s) => s.isRunning);
   const threadRuntime = useThreadRuntime();
   const lastAssistantId = useThread((s) => {
@@ -121,6 +134,9 @@ function ComposerSendButton() {
   }
 
   return (
-    <ComposerPrimitive.Send className={styles.composerActionPrimary}>发送</ComposerPrimitive.Send>
+    <ComposerPrimitive.Send className={styles.composerActionPrimary}>
+      <ReqArrowRightIcon className={styles.composerActionIcon} />
+      <span>{submitLabel ?? "发送"}</span>
+    </ComposerPrimitive.Send>
   );
 }

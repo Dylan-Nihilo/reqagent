@@ -1,22 +1,22 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600;6..72,700&display=swap');
 @import "tailwindcss";
 
 :root {
   /* === Surfaces === */
-  --ra-bg:            #faf9f5;              /* Stitch surface = warm canvas */
-  --ra-surface:       #ffffff;              /* Stitch surface-container-lowest */
-  --ra-surface-sub:   #f5f4f0;              /* Stitch surface-container-low — sidebar */
-  --ra-overlay:       #efeeea;              /* Stitch surface-container */
+  --ra-bg:            #f5f5f1;
+  --ra-surface:       #fbfbf8;
+  --ra-surface-sub:   #efefeb;
+  --ra-overlay:       #e5e5df;
 
   /* === Text === */
-  --ra-text-1:        #1b1c1a;              /* Stitch on-background */
-  --ra-text-2:        #5f5e5e;              /* Stitch secondary */
-  --ra-text-3:        #777777;              /* Stitch outline */
+  --ra-text-1:        #151515;
+  --ra-text-2:        #545454;
+  --ra-text-3:        #7a7a7a;
 
   /* === Borders === */
-  --ra-border:        #e3e2df;              /* Stitch surface-container-highest */
-  --ra-border-soft:   #efeeea;              /* Stitch surface-container */
-  --ra-border-strong: #dbdad6;              /* Stitch surface-dim */
+  --ra-border:        #d7d7d1;
+  --ra-border-soft:   #e4e4de;
+  --ra-border-strong: #c2c2bb;
 
   /* === Semantic States === */
   --ra-ok:            oklch(50% 0.13 145);
@@ -36,21 +36,22 @@
   --ra-pending-line:  oklch(86% 0.005 260);
 
   /* === Accent === */
-  --ra-accent:        oklch(36% 0.010 260);
-  --ra-accent-soft:   oklch(94% 0.010 260);
+  --ra-accent:        oklch(22% 0.001 95);
+  --ra-accent-soft:   oklch(95% 0.001 95);
+  --ra-grid-dot:      color-mix(in oklch, var(--ra-text-1) 8%, transparent);
 
   /* === Legacy aliases (keep for existing components) === */
   --reqagent-bg:            var(--ra-bg);
-  --reqagent-bg-accent:     oklch(95.5% 0.006 80);
+  --reqagent-bg-accent:     #f0f0ec;
   --reqagent-panel:         var(--ra-surface);
-  --reqagent-panel-soft:    oklch(98.5% 0.003 80);
-  --reqagent-panel-muted:   oklch(95.8% 0.005 80);
+  --reqagent-panel-soft:    #f8f8f4;
+  --reqagent-panel-muted:   #f2f2ee;
   --reqagent-line:          color-mix(in oklch, var(--ra-text-1) 8%, transparent);
   --reqagent-line-strong:   color-mix(in oklch, var(--ra-text-1) 16%, transparent);
   --reqagent-text:          var(--ra-text-1);
   --reqagent-text-soft:     var(--ra-text-2);
   --reqagent-muted:         var(--ra-text-3);
-  --reqagent-muted-soft:    oklch(74% 0.004 260);
+  --reqagent-muted-soft:    #90908a;
   --reqagent-accent-soft:   color-mix(in oklch, var(--ra-text-1) 6%, transparent);
   --reqagent-ok:            var(--ra-ok);
   --reqagent-ok-soft:       var(--ra-ok-soft);
@@ -71,26 +72,28 @@
   --reqagent-failed:        var(--ra-err);
   --reqagent-failed-soft:   var(--ra-err-soft);
   --reqagent-failed-line:   var(--ra-err-line);
+  --ra-font-display:
+    "Newsreader", "Iowan Old Style", "Palatino Linotype", "Songti SC", "Noto Serif CJK SC", serif;
   --ra-font-sans:
-    "Manrope", "SF Pro Display", "Helvetica Neue", "Segoe UI", sans-serif;
+    "IBM Plex Sans", "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
   --reqagent-mono:
     "IBM Plex Mono", "SFMono-Regular", "SF Mono", "JetBrains Mono", "Menlo", monospace;
 
   /* === Spacing & Radius === */
   --ra-radius-sm:   6px;
   --ra-radius-md:   10px;
-  --ra-radius-lg:   16px;
-  --ra-radius-xl:   24px;
+  --ra-radius-lg:   8px;
+  --ra-radius-xl:   14px;
   --ra-radius-full: 999px;
 
   /* === Layout === */
-  --ra-panel-width: 320px;
+  --ra-panel-width: 336px;
   --ra-panel-slide-dur: 300ms;
-  --ra-topbar-height: 44px;
+  --ra-topbar-height: 56px;
   --ra-sidebar-width: 260px;
   --ra-sidebar-collapsed-width: 72px;
-  --ra-thread-max-width: 760px;
-  --ra-thread-max-width-with-panel: 680px;
+  --ra-thread-max-width: 980px;
+  --ra-thread-max-width-with-panel: 820px;
 
   /* === Shadow === */
   --ra-shadow-sm: 0 1px 3px oklch(16% 0.008 260 / 0.06);
@@ -118,7 +121,7 @@ body {
   background: var(--ra-bg);
   color: var(--ra-text-1);
   font-family: var(--ra-font-sans);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.6;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;

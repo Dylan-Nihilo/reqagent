@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useComposerRuntime } from "@assistant-ui/react";
 import { ReqBrandMark } from "@/components/ReqBrandMark";
 import { ReqComposer } from "@/components/ReqComposer";
@@ -18,22 +19,22 @@ export function ReqLanding() {
 
       {/* TL: Logo */}
       <div className={styles.cornerTL}>
-        <a className={styles.logo} href="/">
+        <Link className={styles.logo} href="/">
           <div className={styles.logoMark}>
             <ReqBrandMark className={styles.logoMarkSvg} />
           </div>
           <div>
             <div className={styles.logoText}>ReqAgent</div>
           </div>
-        </a>
+        </Link>
       </div>
 
       {/* TR: Nav buttons */}
       <div className={styles.cornerTR}>
-        <a className={styles.ghostBtn} href="/gallery">
+        <Link className={styles.ghostBtn} href="/gallery">
           <GalleryIcon className={styles.ghostBtnIcon} />
           Gallery
-        </a>
+        </Link>
         <button className={styles.ghostBtn} type="button">
           <SettingsIcon className={styles.ghostBtnIcon} />
           设置
@@ -73,7 +74,7 @@ export function ReqLanding() {
           {/* Composer */}
           <div className={styles.composerWrap}>
             <ReqComposer
-              hint="shift + enter 换行"
+              hint="enter 发送"
               placeholder="描述你的产品需求，或者问我任何问题……"
               variant="landing"
             />

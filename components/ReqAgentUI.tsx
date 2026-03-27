@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   MessagePrimitive,
   ThreadPrimitive,
@@ -20,7 +21,6 @@ import { ReqBrandMark } from "@/components/ReqBrandMark";
 import {
   ReqArtifactsIcon,
   ReqGalleryIcon,
-  ReqHistoryIcon,
   ReqSettingsIcon,
   ReqSidebarIcon,
 } from "@/components/ReqIcons";
@@ -47,6 +47,25 @@ const SUGGESTIONS = [
   "查看工作区文件",
 ];
 
+const LANDING_NOTES = [
+  {
+    eyebrow: "Institutional Grade",
+    text: "将模糊业务意图压缩成结构化工作稿，适合需求澄清、功能拆解与交付准备。",
+  },
+  {
+    eyebrow: "Semantic Core",
+    text: "把对话、工具输出与文档产物放到同一张工作台上，避免在聊天界面和文件系统之间来回切换。",
+  },
+];
+
+const LANDING_PROTOCOL = [
+  "输入目标、范围、约束与交付形式",
+  "由 agent 继续补全结构、调用工具、沉淀产物",
+  "在同一张工作台上完成整理、修改与导出",
+];
+
+const SURFACE_TRANSITION_MS = 560;
+
 type ReqAgentUIProps = {
   workspaceId: string;
 };
@@ -54,11 +73,21 @@ type ReqAgentUIProps = {
 export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
   const messageCount = useThread((s) => s.messages.length);
   const remoteId = useAuiState((state) => state.threadListItem.remoteId);
-  const [viewMode, setViewMode] = useState<"landing" | "thread">("landing");
+  const initialHasThread = messageCount > 0 || Boolean(remoteId);
+  const [viewMode, setViewMode] = useState<"landing" | "thread">(
+    initialHasThread ? "thread" : "landing",
+  );
+  const [surfaceMode, setSurfaceMode] = useState<
+    "landing" | "transitioning-to-thread" | "thread"
+  >(initialHasThread ? "thread" : "landing");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const isThreadView = viewMode === "thread";
+  const isThreadSurfaceVisible = surfaceMode !== "landing";
+  const isThreadSettled = surfaceMode === "thread";
+  const isTransitioningToThread = surfaceMode === "transitioning-to-thread";
+  const shouldRenderLanding = surfaceMode !== "thread";
+  const shouldRenderThread = viewMode === "thread" || surfaceMode !== "landing";
 
   useEffect(() => {
     if (messageCount > 0 || remoteId) {
@@ -67,10 +96,37 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
   }, [messageCount, remoteId]);
 
   useEffect(() => {
-    if (isThreadView) {
+    if (viewMode === "thread" && surfaceMode === "landing") {
+      setShowHistory(false);
+      setShowSettings(false);
+      setSurfaceMode("transitioning-to-thread");
+    }
+  }, [surfaceMode, viewMode]);
+
+  useEffect(() => {
+    if (surfaceMode !== "transitioning-to-thread") {
+      return;
+    }
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setSurfaceMode("thread");
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setSurfaceMode("thread");
+    }, SURFACE_TRANSITION_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [surfaceMode]);
+
+  useEffect(() => {
+    if (isThreadSurfaceVisible) {
       setShowHistory(false);
     }
-  }, [isThreadView]);
+  }, [isThreadSurfaceVisible]);
 
   const handleEnterThread = useCallback(() => {
     setViewMode("thread");
@@ -81,6 +137,7 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
   const hasArtifacts = artifacts.items.length > 0 || Boolean(artifacts.pending);
   const showArtifactsPanel = hasArtifacts && !artifactsCollapsed;
   const artifactCount = artifacts.items.length + (artifacts.pending ? 1 : 0);
+  const workspaceCode = workspaceId.replace(/^ws_/, "").slice(0, 8).toUpperCase();
 
   useEffect(() => {
     if (!hasArtifacts) {
@@ -92,228 +149,323 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
     <div
       className={[
         styles.shell,
-        isThreadView ? styles.shellThread : "",
-        isThreadView && showArtifactsPanel ? styles.shellWithPanel : "",
-        isThreadView && sidebarCollapsed ? styles.shellSidebarCollapsed : "",
+        isThreadSurfaceVisible ? styles.shellThread : "",
+        isThreadSurfaceVisible && showArtifactsPanel ? styles.shellWithPanel : "",
+        isThreadSurfaceVisible && sidebarCollapsed ? styles.shellSidebarCollapsed : "",
       ].join(" ").trim()}
     >
-      {!isThreadView ? (
-        <>
-          <div className={styles.cornerTL}>
-            <a className={styles.logo} href="/">
-              <div className={styles.logoMark}>
-                <ReqBrandMark className={styles.logoMarkSvg} />
-              </div>
-              <span className={styles.logoText}>ReqAgent</span>
-            </a>
-          </div>
-
-          <div className={styles.cornerTR}>
-            <button
-              className={styles.ghostBtn}
-              onClick={() => {
-                setShowSettings(false);
-                setShowHistory(true);
-              }}
-              type="button"
-            >
-              <ReqHistoryIcon className={styles.ghostBtnIcon} />
-              <span className={styles.ghostBtnLabel}>历史对话</span>
-            </button>
-            <a className={styles.ghostBtn} href="/gallery">
-              <ReqGalleryIcon className={styles.ghostBtnIcon} />
-              <span className={styles.ghostBtnLabel}>Gallery</span>
-            </a>
-            <button
-              className={styles.ghostBtn}
-              onClick={() => {
-                setShowHistory(false);
-                setShowSettings(true);
-              }}
-              type="button"
-            >
-              <ReqSettingsIcon className={styles.ghostBtnIcon} />
-              <span className={styles.ghostBtnLabel}>设置</span>
-            </button>
-          </div>
-
-          <div className={styles.cornerBL}>
-            <span className={styles.statusDot} />
-            <span className={styles.versionTag}>系统正常</span>
-          </div>
-
-          <div className={styles.cornerBR}>
-            <span className={styles.versionTag}>v0.1.0</span>
-          </div>
-
-          <div className={styles.landingStage}>
-            <div className={styles.landingCenter}>
-              <div className={styles.heroIcon}>
-                <ReqBrandMark className={styles.heroIconSvg} />
-              </div>
-
-              <div className={styles.titleBlock}>
-                <h1 className={styles.title}>ReqAgent</h1>
-                <p className={styles.subtitle}>
-                  把模糊输入压成结构化需求、用户故事和可交付文档。
-                </p>
-              </div>
-
-              <div className={styles.composerLanding}>
-                <ReqComposer
-                  hint="shift + enter 换行"
-                  placeholder="描述产品、功能或流程，把需求交给 ReqAgent……"
-                  variant="landing"
-                />
-              </div>
-
-              <ReqSuggestionChips />
-              <div className={styles.landingRule} />
-            </div>
-          </div>
-
+      <div
+        className={[
+          styles.surfaceStack,
+          isTransitioningToThread ? styles.surfaceStackTransitioning : "",
+        ].join(" ").trim()}
+      >
+        {shouldRenderLanding ? (
           <div
             className={[
-              styles.landingOverlay,
-              showHistory ? styles.landingOverlayOpen : "",
+              styles.surfaceLayer,
+              styles.surfaceLayerLanding,
+              !isTransitioningToThread ? styles.surfaceLayerActive : "",
+              isTransitioningToThread ? styles.surfaceLayerLandingExit : "",
             ].join(" ").trim()}
           >
-            <div className={styles.landingSidebar}>
-              <ReqNavDrawer
-                collapsed={false}
-                currentAgent="ReqAgent"
-                hint="选择历史对话继续"
-                onNewThread={handleEnterThread}
-                onSwitchThread={handleEnterThread}
-                threadTitle="新对话"
-                workspaceId={workspaceId}
-              />
-            </div>
-            <div
-              className={styles.landingBackdrop}
-              onClick={() => setShowHistory(false)}
-              role="presentation"
-            />
-          </div>
-        </>
-      ) : (
-        <div className={styles.threadWrap}>
-          <div className={styles.threadTopbar}>
-            <div className={styles.topBarInner}>
-              <div className={styles.topBarGroup}>
-                <a className={styles.topBarBrand} href="/">
-                  <div className={styles.logoMark}>
-                    <ReqBrandMark className={styles.logoMarkSvg} />
+            <div className={styles.landingStage}>
+              <div className={styles.landingWorkbench}>
+                <aside className={styles.landingRail}>
+                  <div className={styles.landingRailHead}>
+                    <Link className={styles.logo} href="/">
+                      <div className={styles.logoMark}>
+                        <ReqBrandMark className={styles.logoMarkSvg} />
+                      </div>
+                      <span className={styles.logoText}>ReqAgent</span>
+                    </Link>
+                    <p className={styles.kicker}>Prepared Desk 01</p>
                   </div>
-                  <span className={styles.logoText}>ReqAgent</span>
-                </a>
-                <button
-                  className={styles.ghostBtn}
-                  onClick={() => setSidebarCollapsed((v) => !v)}
-                  type="button"
-                  aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
-                >
-                  <ReqSidebarIcon className={styles.ghostBtnIcon} />
-                </button>
-              </div>
 
-              <div className={styles.topBarGroup}>
-                <button
-                  className={[
-                    styles.ghostBtn,
-                    !hasArtifacts ? styles.ghostBtnMuted : "",
-                  ].join(" ").trim()}
-                  disabled={!hasArtifacts}
-                  onClick={() => setArtifactsCollapsed((v) => !v)}
-                  type="button"
-                >
-                  <ReqArtifactsIcon className={styles.ghostBtnIcon} />
-                  <span className={styles.ghostBtnLabel}>
-                    产物{hasArtifacts ? ` ${artifactCount}` : ""}
-                  </span>
-                </button>
-                <a className={styles.ghostBtn} href="/gallery">
-                  <ReqGalleryIcon className={styles.ghostBtnIcon} />
-                  <span className={styles.ghostBtnLabel}>Gallery</span>
-                </a>
-                <button
-                  className={styles.ghostBtn}
-                  onClick={() => setShowSettings(true)}
-                  type="button"
-                >
-                  <ReqSettingsIcon className={styles.ghostBtnIcon} />
-                  <span className={styles.ghostBtnLabel}>设置</span>
-                </button>
-              </div>
-            </div>
-          </div>
+                  <div className={styles.landingRailSection}>
+                    <p className={styles.sectionEyebrow}>Workspace</p>
+                    <button className={[styles.navLink, styles.navLinkActive].join(" ").trim()} type="button">
+                      当前工作台
+                    </button>
+                    <button
+                      className={styles.navLink}
+                      onClick={() => {
+                        setShowSettings(false);
+                        setShowHistory(true);
+                      }}
+                      type="button"
+                    >
+                      历史对话
+                    </button>
+                    <Link className={styles.navLink} href="/gallery">
+                      组件预览
+                    </Link>
+                    <button
+                      className={styles.navLink}
+                      onClick={() => {
+                        setShowHistory(false);
+                        setShowSettings(true);
+                      }}
+                      type="button"
+                    >
+                      工作区设置
+                    </button>
+                  </div>
 
-          <div className={styles.threadLayout}>
-            <aside className={styles.sidebarColumn}>
-              <ReqNavDrawer
-                collapsed={sidebarCollapsed}
-                currentAgent="ReqAgent"
-                hint="输入新消息开始对话"
-                onNewThread={handleEnterThread}
-                onToggle={() => setSidebarCollapsed((v) => !v)}
-                onSwitchThread={handleEnterThread}
-                threadTitle="当前会话"
-                workspaceId={workspaceId}
-              />
-            </aside>
-            <div className={styles.threadMain}>
-              <div className={styles.threadMainInner}>
-                <ThreadPrimitive.Root className={styles.threadRoot}>
-                  <ThreadPrimitive.Viewport
-                    autoScroll
-                    className={styles.viewport}
-                    scrollToBottomOnInitialize
-                    scrollToBottomOnRunStart
-                    turnAnchor="bottom"
-                  >
-                    <div className={styles.threadContent}>
-                      <ThreadPrimitive.Messages
-                        components={{
-                          UserMessage,
-                          AssistantMessage,
-                        }}
-                      />
+                  <div className={styles.landingRailSection}>
+                    <p className={styles.sectionEyebrow}>Capabilities</p>
+                    <div className={styles.capabilityRow}>
+                      <span className={styles.capabilityIndex}>01</span>
+                      <span>需求分析</span>
                     </div>
-                  </ThreadPrimitive.Viewport>
-                </ThreadPrimitive.Root>
-                <div className={styles.threadFooter}>
-                  <ThreadPrimitive.ScrollToBottom
-                    behavior="smooth"
-                    className={styles.scrollToBottomButton}
-                  >
-                    <ReqScrollToBottom>回到底部</ReqScrollToBottom>
-                  </ThreadPrimitive.ScrollToBottom>
-                  <div className={styles.composerDock}>
-                    <ReqComposer
-                      hint="shift + enter 换行"
-                      placeholder="继续推进这个需求……"
-                      variant="thread"
-                    />
+                    <div className={styles.capabilityRow}>
+                      <span className={styles.capabilityIndex}>02</span>
+                      <span>文档解析</span>
+                    </div>
+                    <div className={styles.capabilityRow}>
+                      <span className={styles.capabilityIndex}>03</span>
+                      <span>模板导出</span>
+                    </div>
                   </div>
+
+                  <div className={styles.landingProfile}>
+                    <span className={styles.profileMonogram}>D</span>
+                    <div className={styles.profileMeta}>
+                      <p className={styles.profileName}>Dylan Workspace</p>
+                      <p className={styles.profileHint}>v0.1.0 · system ready</p>
+                    </div>
+                  </div>
+                </aside>
+
+                <section className={styles.landingCanvas}>
+                  <div className={styles.canvasBar}>
+                    <span className={styles.canvasTab}>Overview</span>
+                    <span className={[styles.canvasTab, styles.canvasTabActive].join(" ").trim()}>
+                      Analysis Surface
+                    </span>
+                  </div>
+
+                  <div className={styles.landingContent}>
+                    <div className={styles.landingMainColumn}>
+                      <div className={styles.heroBlock}>
+                        <p className={styles.heroEyebrow}>Editorial Workbench</p>
+                        <h1 className={styles.title}>从需求到文档，精确如你所想。</h1>
+                        <p className={styles.subtitle}>
+                          ReqAgent 是一个 AI 驱动的需求分析工作台。描述你的业务需求、流程约束或文档模板，把它整理成可继续推进的工作稿。
+                        </p>
+                      </div>
+
+                      <div className={styles.composerLanding}>
+                        <ReqComposer
+                          hint="enter 发送"
+                          placeholder="描述你的需求、流程、模板或业务约束。"
+                          submitLabel="开始分析"
+                          variant="landing"
+                        />
+                      </div>
+
+                      <ReqSuggestionChips />
+                    </div>
+                  </div>
+
+                  <div className={styles.landingLowerBand}>
+                    {LANDING_NOTES.map((note) => (
+                      <div className={styles.noteBlock} key={note.eyebrow}>
+                        <p className={styles.noteEyebrow}>{note.eyebrow}</p>
+                        <p className={styles.noteText}>{note.text}</p>
+                      </div>
+                    ))}
+
+                    <div className={[styles.noteBlock, styles.protocolBlock].join(" ").trim()}>
+                      <p className={styles.noteEyebrow}>Working Method</p>
+                      <div className={styles.protocolList}>
+                        {LANDING_PROTOCOL.map((item, index) => (
+                          <div className={styles.protocolItem} key={item}>
+                            <span className={styles.protocolIndex}>{String(index + 1).padStart(2, "0")}</span>
+                            <span className={styles.protocolText}>{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+
+            <div
+              className={[
+                styles.landingOverlay,
+                showHistory ? styles.landingOverlayOpen : "",
+              ].join(" ").trim()}
+            >
+              <div className={styles.landingSidebar}>
+                <ReqNavDrawer
+                  collapsed={false}
+                  currentAgent="ReqAgent"
+                  hint="选择历史对话继续"
+                  onNewThread={handleEnterThread}
+                  onSwitchThread={handleEnterThread}
+                  threadTitle="新对话"
+                  workspaceId={workspaceId}
+                />
+              </div>
+              <div
+                className={styles.landingBackdrop}
+                onClick={() => setShowHistory(false)}
+                role="presentation"
+              />
+            </div>
+          </div>
+        ) : null}
+
+        {shouldRenderThread ? (
+          <div
+            className={[
+              styles.surfaceLayer,
+              styles.surfaceLayerThread,
+              isTransitioningToThread ? styles.surfaceLayerThreadEnter : "",
+              isThreadSettled ? styles.surfaceLayerActive : "",
+            ].join(" ").trim()}
+          >
+            <div className={styles.threadWrap}>
+              <div className={styles.threadFrame}>
+                <div className={styles.threadTopbar}>
+                  <div className={styles.topBarInner}>
+                    <div className={styles.topBarGroup}>
+                      <Link className={styles.topBarBrand} href="/">
+                        <div className={styles.logoMark}>
+                          <ReqBrandMark className={styles.logoMarkSvg} />
+                        </div>
+                        <span className={styles.logoText}>ReqAgent</span>
+                      </Link>
+                      <button
+                        className={styles.ghostBtn}
+                        onClick={() => setSidebarCollapsed((v) => !v)}
+                        type="button"
+                        aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+                      >
+                        <ReqSidebarIcon className={styles.ghostBtnIcon} />
+                        <span className={styles.ghostBtnLabel}>
+                          {sidebarCollapsed ? "展开目录" : "收起目录"}
+                        </span>
+                      </button>
+                    </div>
+
+                    <div className={styles.topBarGroup}>
+                      <span className={styles.topBarMeta}>analysis canvas</span>
+                      <button
+                        className={[
+                          styles.ghostBtn,
+                          !hasArtifacts ? styles.ghostBtnMuted : "",
+                        ].join(" ").trim()}
+                        disabled={!hasArtifacts}
+                        onClick={() => setArtifactsCollapsed((v) => !v)}
+                        type="button"
+                      >
+                        <ReqArtifactsIcon className={styles.ghostBtnIcon} />
+                        <span className={styles.ghostBtnLabel}>
+                          产物{hasArtifacts ? ` ${artifactCount}` : ""}
+                        </span>
+                      </button>
+                      <Link className={styles.ghostBtn} href="/gallery">
+                        <ReqGalleryIcon className={styles.ghostBtnIcon} />
+                        <span className={styles.ghostBtnLabel}>组件预览</span>
+                      </Link>
+                      <button
+                        className={styles.ghostBtn}
+                        onClick={() => setShowSettings(true)}
+                        type="button"
+                      >
+                        <ReqSettingsIcon className={styles.ghostBtnIcon} />
+                        <span className={styles.ghostBtnLabel}>设置</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={styles.threadLayout}>
+                  <aside className={styles.sidebarColumn}>
+                    <ReqNavDrawer
+                      collapsed={sidebarCollapsed}
+                      currentAgent="ReqAgent"
+                      hint="输入新消息开始对话"
+                      onNewThread={handleEnterThread}
+                      onToggle={() => setSidebarCollapsed((v) => !v)}
+                      onSwitchThread={handleEnterThread}
+                      threadTitle="当前会话"
+                      workspaceId={workspaceId}
+                    />
+                  </aside>
+                  <div className={styles.threadMain}>
+                    <div className={styles.threadMainInner}>
+                      <div className={styles.canvasLedger}>
+                        <div>
+                          <p className={styles.canvasLedgerLabel}>当前工作区</p>
+                          <p className={styles.canvasLedgerText}>
+                            对话、工具调用与产物会被整理成一份连续工作稿。
+                          </p>
+                        </div>
+                        <div className={styles.canvasLedgerStats}>
+                          <span className={styles.canvasLedgerPill}>workspace</span>
+                          <code className={styles.canvasLedgerCode}>{workspaceCode}</code>
+                        </div>
+                      </div>
+
+                      <ThreadPrimitive.Root className={styles.threadRoot}>
+                        <ThreadPrimitive.Viewport
+                          autoScroll
+                          className={styles.viewport}
+                          scrollToBottomOnInitialize
+                          scrollToBottomOnRunStart
+                          turnAnchor="bottom"
+                        >
+                          <div className={styles.threadContent}>
+                            <ThreadPrimitive.Messages
+                              components={{
+                                UserMessage,
+                                AssistantMessage,
+                              }}
+                            />
+                          </div>
+                        </ThreadPrimitive.Viewport>
+                      </ThreadPrimitive.Root>
+                      <div className={styles.threadFooter}>
+                        <ThreadPrimitive.ScrollToBottom
+                          behavior="smooth"
+                          className={styles.scrollToBottomButton}
+                        >
+                          <ReqScrollToBottom>回到底部</ReqScrollToBottom>
+                        </ThreadPrimitive.ScrollToBottom>
+                        <div className={styles.composerDock}>
+                          <ReqComposer
+                            hint="enter 发送"
+                            placeholder="继续推进这个需求。"
+                            submitLabel="继续"
+                            variant="thread"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <aside
+                    className={[
+                      styles.artifactsPanel,
+                      showArtifactsPanel ? styles.artifactsPanelVisible : "",
+                    ].join(" ").trim()}
+                  >
+                    <ReqArtifactsPanel
+                      items={artifacts.items}
+                      onClose={() => setArtifactsCollapsed(true)}
+                      pending={artifacts.pending}
+                    />
+                  </aside>
                 </div>
               </div>
             </div>
-
-            <aside
-              className={[
-                styles.artifactsPanel,
-                showArtifactsPanel ? styles.artifactsPanelVisible : "",
-              ].join(" ").trim()}
-            >
-              <ReqArtifactsPanel
-                items={artifacts.items}
-                onClose={() => setArtifactsCollapsed(true)}
-                pending={artifacts.pending}
-              />
-            </aside>
           </div>
-        </div>
-      )}
+        ) : null}
+      </div>
 
       <SettingsSheet
         onClose={() => setShowSettings(false)}
@@ -400,7 +552,7 @@ function AssistantMessage() {
   );
 }
 
-function AssistantDebugPanel({
+export function AssistantDebugPanel({
   content,
   metadata,
   status,
@@ -569,4 +721,3 @@ const sampleLoadedSkills: ReqAgentLoadedSkillMeta[] = [
   { id: "req-prd-generic", name: "通用 PRD 模板", type: "knowledge" },
   { id: "cap-mermaid", name: "Mermaid 图表", type: "capability" },
 ];
-

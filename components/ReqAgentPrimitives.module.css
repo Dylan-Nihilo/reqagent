@@ -622,29 +622,58 @@
 }
 
 .composerFrame {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--reqagent-line);
-  border-radius: 18px;
-  background: color-mix(in oklch, var(--ra-surface) 92%, white 8%);
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 0 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--reqagent-line-strong);
+  border-radius: 0;
+  background: transparent;
+  transition:
+    border-color var(--ra-dur-base) var(--ra-ease-out),
+    background var(--ra-dur-base) var(--ra-ease-out);
+}
+
+.composerFrame::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: color-mix(in srgb, var(--ra-text-1) 62%, transparent);
+  opacity: 0;
+  transform: scaleX(0.96);
+  transform-origin: center;
+  pointer-events: none;
+  transition:
+    opacity var(--ra-dur-base) var(--ra-ease-out),
+    transform var(--ra-dur-base) var(--ra-ease-out);
+}
+
+.composerFrame:hover {
+  border-bottom-color: color-mix(in srgb, var(--ra-text-1) 18%, transparent);
 }
 
 .composerFrame:focus-within {
-  border-color: var(--reqagent-line-strong);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ra-text-1) 5%, transparent);
+  border-bottom-color: var(--ra-text-1);
+}
+
+.composerFrame:hover::after,
+.composerFrame:focus-within::after {
+  opacity: 1;
+  transform: scaleX(1);
 }
 
 .composerLanding {
-  padding: 14px 16px;
-  border-radius: 24px;
+  min-height: 0;
 }
 
 .composerThread {
-  min-height: 60px;
-  padding: 10px 12px;
-  border-radius: 18px;
+  min-height: 0;
 }
 
 .composerInput {
@@ -654,10 +683,15 @@
   box-shadow: none;
   background: transparent;
   color: var(--reqagent-text);
-  font-size: 13px;
-  line-height: 1.75;
+  font-size: 16px;
+  line-height: 1.6;
   resize: none;
   appearance: none;
+  padding: 0;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
 
 .composerInput:focus,
@@ -666,36 +700,60 @@
   box-shadow: none;
 }
 
+.composerInput::placeholder {
+  color: color-mix(in srgb, var(--reqagent-muted) 92%, transparent);
+}
+
+.composerInput::-webkit-scrollbar {
+  display: none;
+}
+
 .composerLanding .composerInput,
 .composerInputLanding {
-  min-height: 120px;
+  min-height: 28px;
+  max-height: 28px;
 }
 
 .composerThread .composerInput,
 .composerInputThread {
-  min-height: 44px;
-  max-height: 168px;
+  min-height: 28px;
+  max-height: 28px;
 }
 
 .composerActions {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   flex-shrink: 0;
 }
 
 .composerActionPrimary,
 .composerActionSecondary,
 .composerActionPreview {
-  border-radius: 999px;
-  padding: 9px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  min-height: 38px;
+  padding: 0 14px;
+  font-family: var(--reqagent-mono);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition:
+    border-color var(--ra-dur-base) var(--ra-ease-out),
+    background var(--ra-dur-base) var(--ra-ease-out),
+    color var(--ra-dur-base) var(--ra-ease-out),
+    box-shadow var(--ra-dur-base) var(--ra-ease-out),
+    transform var(--ra-dur-base) var(--ra-ease-out);
 }
 
 .composerActionPrimary {
-  border: 0;
+  border: 1px solid var(--reqagent-text);
   background: var(--reqagent-text);
-  color: #ffffff;
+  color: var(--ra-surface);
+  box-shadow: 0 0 0 transparent;
 }
 
 .composerActionSecondary {
@@ -705,10 +763,42 @@
 }
 
 .composerActionPreview {
-  border: 0;
+  border: 1px solid var(--reqagent-text);
   background: var(--reqagent-text);
-  color: #ffffff;
+  color: var(--ra-surface);
   cursor: default;
+}
+
+.composerActionPrimary:hover,
+.composerActionPrimary:focus-visible {
+  background: color-mix(in srgb, var(--reqagent-text) 94%, white 6%);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 18px color-mix(in srgb, var(--reqagent-text) 10%, transparent);
+}
+
+.composerActionSecondary:hover,
+.composerActionSecondary:focus-visible {
+  border-color: var(--reqagent-line-strong);
+  background: color-mix(in srgb, var(--ra-surface) 92%, transparent);
+  color: var(--reqagent-text);
+  transform: translateY(-1px);
+}
+
+.composerActionPrimary:focus-visible,
+.composerActionSecondary:focus-visible {
+  outline: none;
+}
+
+.composerActionIcon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  transition: transform var(--ra-dur-base) var(--ra-ease-out);
+}
+
+.composerActionPrimary:hover .composerActionIcon,
+.composerActionPrimary:focus-visible .composerActionIcon {
+  transform: translateX(1px);
 }
 
 .composerHint {
@@ -716,7 +806,10 @@
   display: flex;
   justify-content: space-between;
   gap: 12px;
+  font-family: var(--reqagent-mono);
   font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: none;
   color: var(--reqagent-muted);
 }
 

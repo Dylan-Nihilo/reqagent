@@ -338,17 +338,6 @@ export function estimateDataSizeLabel(data: string) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function defaultTitle(role: ReqMessageRole) {
-  switch (role) {
-    case "user":
-      return "Dylan";
-    case "system":
-      return "系统";
-    default:
-      return "ReqAgent";
-  }
-}
-
 function statusLabel(status: ReqMessageVisualStatus) {
   switch (status) {
     case "pending":

@@ -661,13 +661,6 @@ function parseMarkdownSections(markdown: string) {
   return sections;
 }
 
-function getSectionBody(
-  sections: MarkdownSection[],
-  normalizedHeading: string,
-) {
-  return findSectionByCandidates(sections, [normalizedHeading])?.body ?? "";
-}
-
 function getSectionBodyByCandidates(
   sections: MarkdownSection[],
   candidates: string[],
@@ -762,13 +755,6 @@ function parseMarkdownTable(body: string) {
 
   if (rows.length < 2) return [];
   return rows;
-}
-
-function getBodyText(
-  sections: MarkdownSection[],
-  normalizedHeading: string,
-) {
-  return markdownLinesToPlainText(getSectionBody(sections, normalizedHeading));
 }
 
 function getBodyTextByCandidates(

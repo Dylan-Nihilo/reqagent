@@ -36,6 +36,25 @@ type ThreadMessagesResponse = {
   messages: ReqAgentStoredMessageEntry[];
 };
 
+type HistoryFormatPayload = {
+  id: string;
+  parent_id: string | null;
+  format: string;
+  content: unknown;
+};
+
+type HistoryWriteItem = {
+  message: unknown;
+  parentId: string | null;
+};
+
+type HistoryFormatAdapter = {
+  format: string;
+  decode(payload: HistoryFormatPayload): unknown;
+  encode(item: HistoryWriteItem): unknown;
+  getId(message: unknown): string;
+};
+
 async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const response = await fetch(input, init);
   if (!response.ok) {
@@ -164,7 +183,7 @@ function createReqAgentThreadHistoryAdapter(
       // Persistence uses `withFormat()` below.
     },
 
-    withFormat(formatAdapter: any) {
+    withFormat(formatAdapter: HistoryFormatAdapter) {
       return {
         async load() {
           const remoteId = aui.threadListItem().getState().remoteId;
@@ -189,7 +208,7 @@ function createReqAgentThreadHistoryAdapter(
           };
         },
 
-        async append(item: any) {
+        async append(item: HistoryWriteItem) {
           const current = aui.threadListItem().getState();
           const remoteId = current.remoteId ?? (await aui.threadListItem().initialize()).remoteId;
 
@@ -213,7 +232,7 @@ function createReqAgentThreadHistoryAdapter(
           );
         },
 
-        async update(item: any) {
+        async update(item: HistoryWriteItem) {
           const current = aui.threadListItem().getState();
           const remoteId = current.remoteId ?? (await aui.threadListItem().initialize()).remoteId;
 
@@ -278,11 +297,11 @@ export function useReqAgentRuntime(workspaceId: string) {
               };
             },
           }),
-        [aui, localThreadId, workspaceId],
+        [aui, localThreadId],
       );
       const history = useMemo(
         () => createReqAgentThreadHistoryAdapter(aui, workspaceId),
-        [aui, workspaceId],
+        [aui],
       );
       const chat = useChat<UIMessage>({
         id: localThreadId,

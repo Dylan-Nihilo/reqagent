@@ -78,7 +78,6 @@ async function fetchThreads(workspaceId: string) {
 }
 
 function ReqNavDrawerRuntime({
-  threadTitle,
   currentAgent,
   hint,
   workspaceId,

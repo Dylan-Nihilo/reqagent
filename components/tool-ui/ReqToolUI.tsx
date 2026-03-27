@@ -133,7 +133,6 @@ export function ReqToolPart(props: ToolCallMessagePartProps) {
       <ReqToolCatalogCall
         name={props.toolName}
         result={catalogResult}
-        rawInput={props.args}
         state={viewState}
         title={registryItem?.title}
       />
@@ -328,16 +327,13 @@ function ReqToolCatalogCall({
   title,
   state,
   result,
-  rawInput,
 }: {
   name: string;
   title?: string;
   state: ToolInvocationViewState;
   result: AvailableToolsResult;
-  rawInput?: unknown;
 }) {
   const registryItem = getToolRegistryItem(name);
-  const formattedInput = formatRawBlock(rawInput);
 
   return (
     <article className={joinClasses(getToolItemClassName(state), styles.toolItemExpanded, styles.toolCatalogCall)}>
