@@ -600,7 +600,7 @@ const USER_REQUIREMENTS_BASE_PROFILE: DocxTemplateProfile = {
   },
 };
 
-function resolveDocxTemplateProfile(templateProfileId?: string) {
+export function resolveDocxTemplateProfile(templateProfileId?: string): DocxTemplateProfile {
   const resolvedId = templateProfileId?.trim() || USER_REQUIREMENTS_BASE_PROFILE.id;
   if (resolvedId === USER_REQUIREMENTS_BASE_PROFILE.id) {
     return USER_REQUIREMENTS_BASE_PROFILE;
@@ -1783,6 +1783,12 @@ function findFeatureSections(sections: MarkdownSection[]) {
       "术语定义",
       "业务概述",
       "业务处理流程",
+      "业务流程",
+      "业务功能详述",
+      "业务规则",
+      "输入和输出",
+      "输入要素",
+      "输出要素",
       "现状和存在的问题",
       "我行及同业现状",
       "我行存在的问题",
