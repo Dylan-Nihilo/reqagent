@@ -1,0 +1,15 @@
+{
+  "id": "req-prd-generic",
+  "name": "通用 PRD 模板",
+  "version": "1.0.0",
+  "type": "knowledge",
+  "domain": "requirements",
+  "description": "提供标准化的产品需求文档（PRD）编写指南和模板，帮助生成结构完整的需求文档。",
+  "author": "ReqAgent",
+  "tags": ["prd", "requirements", "documentation"],
+  "provides": {
+    "prompt": true,
+    "knowledge": true,
+    "outputTemplate": true
+  }
+}

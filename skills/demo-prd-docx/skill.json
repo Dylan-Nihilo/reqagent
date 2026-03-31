@@ -1,0 +1,13 @@
+{
+  "name": "DOCX 需求说明书模板",
+  "version": "1.0.0",
+  "type": "knowledge",
+  "description": "提供银行式需求说明书的章节骨架与写作约束，适用于 DOCX 导出场景。",
+  "tags": ["docx", "requirements", "template"],
+  "provides": {
+    "prompt": true,
+    "knowledge": true,
+    "outputTemplate": false,
+    "tools": false
+  }
+}

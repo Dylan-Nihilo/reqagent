@@ -1,0 +1,14 @@
+{
+  "id": "cap-mermaid",
+  "name": "Mermaid 图表",
+  "version": "1.0.0",
+  "type": "capability",
+  "domain": "diagrams",
+  "description": "赋予 Agent 使用 Mermaid 语法生成流程图、时序图、类图等可视化图表的能力。",
+  "author": "ReqAgent",
+  "tags": ["mermaid", "diagram", "visualization"],
+  "provides": {
+    "prompt": true,
+    "knowledge": true
+  }
+}
