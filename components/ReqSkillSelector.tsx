@@ -17,7 +17,8 @@ type ReqSkillSelectorProps = {
   workspaceId: string;
 };
 
-export function ReqSkillSelector({ workspaceId: _workspaceId }: ReqSkillSelectorProps) {
+export function ReqSkillSelector({ workspaceId }: ReqSkillSelectorProps) {
+  void workspaceId;
   const [skills, setSkills] = useState<ReqAgentSkillManifest[]>([]);
   const [activeIds, setActiveIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);

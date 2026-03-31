@@ -15,6 +15,13 @@ import styles from "@/components/ReqWriteFilePart.module.css";
 
 export function ReqWriteFilePart(props: ToolCallMessagePartProps) {
   const meta = useCurrentMessageMeta();
+  const args = useMemo(() => {
+    if (props.args && typeof props.args === "object" && !Array.isArray(props.args)) {
+      return props.args as Record<string, unknown>;
+    }
+
+    return props.argsText ? parseToolArgsText(props.argsText) : null;
+  }, [props.args, props.argsText]);
   const viewState = resolveToolInvocationViewState({
     argsText: props.argsText,
     interrupt: props.interrupt,
@@ -28,14 +35,6 @@ export function ReqWriteFilePart(props: ToolCallMessagePartProps) {
   if (viewState === "failed" || viewState === "input_invalid" || viewState === "denied") {
     return <ReqToolPart {...props} />;
   }
-
-  const args = useMemo(() => {
-    if (props.args && typeof props.args === "object" && !Array.isArray(props.args)) {
-      return props.args as Record<string, unknown>;
-    }
-
-    return props.argsText ? parseToolArgsText(props.argsText) : null;
-  }, [props.args, props.argsText]);
 
   const result = props.result && typeof props.result === "object" && !Array.isArray(props.result)
     ? (props.result as Record<string, unknown>)

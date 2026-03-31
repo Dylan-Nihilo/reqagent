@@ -41,7 +41,7 @@ describe("resolveInteractiveQaSubmitter", () => {
     const append = vi.fn();
     const composer = Object.assign(vi.fn(() => ({ getState: () => ({}), setText })), {
       source: null,
-    }) as (() => { getState: () => {}; setText: typeof setText }) & {
+    }) as (() => { getState: () => Record<string, never>; setText: typeof setText }) & {
       source: string | null;
     };
     const thread = Object.assign(vi.fn(() => ({ append })), {

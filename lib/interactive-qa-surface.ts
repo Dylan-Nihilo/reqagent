@@ -8,7 +8,7 @@ import type { ReqAgentMessageMeta } from "@/lib/types";
 import { readMessageParts } from "@/lib/ui-message-utils";
 
 type ComposerRuntimeLike = {
-  getState: () => { runConfig?: any };
+  getState: () => { runConfig?: Record<string, unknown> };
   setText: (draft: string) => void;
 };
 
@@ -16,8 +16,13 @@ type ComposerAccessorLike = (() => ComposerRuntimeLike) & {
   source: string | null;
 };
 
+type InteractiveQaReplyMessage = {
+  content: Array<{ type: "text"; text: string }>;
+  runConfig?: Record<string, unknown>;
+};
+
 type ThreadRuntimeLike = {
-  append: (message: any) => Promise<void> | void;
+  append: (message: InteractiveQaReplyMessage) => Promise<void> | void;
 };
 
 type ThreadAccessorLike = (() => ThreadRuntimeLike) & {
@@ -51,7 +56,7 @@ export function resolveAssistantTextSurface(text: string): AssistantTextSurface 
   return {
     kind: "markdown",
     markdown: text,
-    };
+  };
 }
 
 export type InteractiveQaCueSurface = {

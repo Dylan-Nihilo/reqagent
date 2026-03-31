@@ -17,14 +17,28 @@ function createDatabase() {
   fs.mkdirSync(REQAGENT_DIR, { recursive: true });
 
   const sqlite = new Database(REQAGENT_DB_PATH);
+  sqlite.pragma("busy_timeout = 5000");
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");
   return sqlite;
 }
 
+function tableExists(dbHandle: Database.Database, tableName: string) {
+  const row = dbHandle
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(tableName) as { name?: string } | undefined;
+  return row?.name === tableName;
+}
+
 function tableHasColumn(dbHandle: Database.Database, tableName: string, columnName: string) {
   const rows = dbHandle.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name?: string }>;
   return rows.some((row) => row.name === columnName);
+}
+
+function coreTablesExist(dbHandle: Database.Database) {
+  return tableExists(dbHandle, "workspaces")
+    && tableExists(dbHandle, "threads")
+    && tableExists(dbHandle, "messages");
 }
 
 function summaryColumnsAlreadyApplied(dbHandle: Database.Database) {
@@ -34,6 +48,42 @@ function summaryColumnsAlreadyApplied(dbHandle: Database.Database) {
     && tableHasColumn(dbHandle, "workspaces", "summary_json")
     && tableHasColumn(dbHandle, "workspaces", "summary_updated_at")
   );
+}
+
+function bootstrapCoreSchema(dbHandle: Database.Database) {
+  dbHandle.exec(`
+    CREATE TABLE IF NOT EXISTS workspaces (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      summary_json TEXT NOT NULL DEFAULT '{}',
+      summary_updated_at INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS threads (
+      id TEXT PRIMARY KEY NOT NULL,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE cascade,
+      title TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      is_archived INTEGER NOT NULL DEFAULT 0,
+      summary_json TEXT NOT NULL DEFAULT '{}',
+      summary_updated_at INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY NOT NULL,
+      thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE cascade,
+      role TEXT NOT NULL,
+      parts_json TEXT NOT NULL,
+      metadata_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS threads_workspace_updated_at_idx
+      ON threads (workspace_id, updated_at);
+    CREATE INDEX IF NOT EXISTS messages_thread_created_at_idx
+      ON messages (thread_id, created_at);
+  `);
 }
 
 function seedMigrationState(dbHandle: Database.Database, folder: string) {
@@ -70,6 +120,11 @@ export const db = drizzle(sqlite, { schema });
 const migrationsFolder = path.join(process.cwd(), "drizzle");
 
 if (fs.existsSync(migrationsFolder)) {
+  if (!coreTablesExist(sqlite)) {
+    bootstrapCoreSchema(sqlite);
+    seedMigrationState(sqlite, migrationsFolder);
+  }
+
   try {
     migrate(db, {
       migrationsFolder,
