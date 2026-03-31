@@ -1,0 +1,459 @@
+.card {
+  --interactive-qa-border: var(--reqagent-border, color-mix(in oklch, var(--reqagent-text) 12%, transparent));
+  --interactive-qa-border-soft: var(--reqagent-border-soft, color-mix(in srgb, var(--interactive-qa-border) 50%, transparent));
+  --interactive-qa-font-display:
+    var(--reqagent-font-display, "Newsreader", "Iowan Old Style", "Palatino Linotype", "Songti SC", "Noto Serif CJK SC", serif);
+  position: relative;
+  display: grid;
+  gap: 0;
+  width: min(100%, 74ch);
+  padding: 2px 0 0 14px;
+  background: transparent;
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 4px auto 4px 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--reqagent-text) 14%, transparent);
+  opacity: 0.92;
+}
+
+.head {
+  display: grid;
+  gap: 12px;
+  padding: 0 0 18px;
+}
+
+.identity {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.eyebrow,
+.customLabel,
+.questionCurrentLabel,
+.reviewEyebrow {
+  margin: 0;
+  font-family: var(--reqagent-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--reqagent-muted);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--interactive-qa-font-display);
+  font-size: clamp(1.02rem, 0.98rem + 0.42vw, 1.26rem);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  color: var(--reqagent-text);
+}
+
+.summary {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--reqagent-text-soft);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.metaRail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.metaPill,
+.questionMode,
+.reviewLock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 25px;
+  padding: 0 8px;
+  border: 1px solid var(--interactive-qa-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--reqagent-text-soft);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.metaIcon,
+.actionIcon {
+  width: 13px;
+  height: 13px;
+}
+
+.questionCard,
+.reviewPanel {
+  display: grid;
+  gap: 16px;
+  padding: 18px 0 0;
+  border-top: 1px solid var(--interactive-qa-border-soft);
+}
+
+.stepRail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stepIndex {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  color: var(--reqagent-muted);
+  font-family: var(--reqagent-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.questionIntro,
+.reviewHead {
+  display: grid;
+  gap: 10px;
+}
+
+.questionTitle,
+.reviewTitle {
+  margin: 0;
+  color: var(--reqagent-text);
+  font-size: 15px;
+  line-height: 1.68;
+  letter-spacing: -0.01em;
+}
+
+.questionCurrent {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--interactive-qa-border-soft);
+}
+
+.questionCurrentValue,
+.reviewAnswer,
+.reviewHint {
+  color: var(--reqagent-text-soft);
+  font-size: 13px;
+  line-height: 1.68;
+}
+
+.optionList {
+  display: grid;
+  border-top: 1px solid var(--interactive-qa-border-soft);
+}
+
+.optionButton,
+.primaryButton,
+.secondaryButton,
+.reviewEditButton {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+}
+
+.optionButton {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  width: 100%;
+  padding: 12px 0 12px 10px;
+  border-bottom: 1px solid var(--interactive-qa-border-soft);
+  color: var(--reqagent-text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    color 160ms ease,
+    opacity 160ms ease,
+    border-color 160ms ease;
+}
+
+.optionButton::before {
+  content: "";
+  position: absolute;
+  inset: 10px auto 10px 0;
+  width: 1px;
+  background: transparent;
+  transition: background 160ms ease;
+}
+
+.optionButton:hover:not(:disabled) {
+  transform: translateX(2px);
+}
+
+.optionButton:hover:not(:disabled)::before,
+.optionButtonSelected::before {
+  background: color-mix(in srgb, var(--reqagent-text) 24%, transparent);
+}
+
+.optionButtonSelected {
+  transform: translateX(2px);
+}
+
+.optionButton:disabled,
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.reviewEditButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+  transform: none;
+}
+
+.optionLead {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+
+.optionKey {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  min-height: 22px;
+  border: 1px solid var(--interactive-qa-border);
+  border-radius: 4px;
+  color: var(--reqagent-text-soft);
+  font-family: var(--reqagent-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.optionButtonSelected .optionKey {
+  border-color: color-mix(in srgb, var(--reqagent-text) 18%, transparent);
+  color: var(--reqagent-text);
+}
+
+.optionLabel {
+  font-size: 13px;
+  line-height: 1.72;
+  color: inherit;
+}
+
+.optionMeta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 1px;
+}
+
+.optionBadge,
+.optionState {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--interactive-qa-border);
+  border-radius: 4px;
+  font-family: var(--reqagent-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.optionBadge {
+  color: var(--reqagent-muted);
+}
+
+.optionState {
+  color: var(--reqagent-text);
+  border-color: color-mix(in srgb, var(--reqagent-text) 18%, transparent);
+}
+
+.customField {
+  display: grid;
+  gap: 10px;
+}
+
+.customHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.customHint {
+  color: var(--reqagent-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.customInput {
+  width: 100%;
+  min-width: 0;
+  min-height: 88px;
+  padding: 12px 14px;
+  border: 1px solid var(--interactive-qa-border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--reqagent-panel-soft) 72%, transparent);
+  color: var(--reqagent-text);
+  font: inherit;
+  line-height: 1.7;
+  resize: vertical;
+  outline: none;
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease,
+    background 160ms ease;
+}
+
+.customInput::placeholder {
+  color: var(--reqagent-muted-soft);
+}
+
+.customInput:focus {
+  border-color: color-mix(in srgb, var(--reqagent-text) 28%, transparent);
+  background: transparent;
+  transform: translateX(1px);
+}
+
+.reviewList {
+  display: grid;
+  border-top: 1px solid var(--interactive-qa-border-soft);
+}
+
+.reviewItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--interactive-qa-border-soft);
+}
+
+.reviewItemCopy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.reviewPrompt {
+  margin: 0;
+  color: var(--reqagent-text);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.reviewAnswer,
+.reviewHint {
+  margin: 0;
+}
+
+.reviewEditButton,
+.secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--interactive-qa-border);
+  border-radius: 4px;
+  color: var(--reqagent-text-soft);
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.reviewEditButton:hover:not(:disabled),
+.secondaryButton:hover:not(:disabled) {
+  transform: translateX(-1px);
+  border-color: color-mix(in srgb, var(--reqagent-text) 18%, transparent);
+  color: var(--reqagent-text);
+}
+
+.actionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.actionSpacer {
+  display: inline-flex;
+  min-width: 1px;
+  min-height: 1px;
+}
+
+.primaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--reqagent-text) 16%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--reqagent-panel) 94%, white 6%);
+  color: var(--reqagent-text);
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.primaryButton:hover:not(:disabled) {
+  transform: translateX(2px);
+  border-color: color-mix(in srgb, var(--reqagent-text) 24%, transparent);
+}
+
+.errorText {
+  margin: 0;
+  color: var(--reqagent-failed);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+@media (max-width: 760px) {
+  .card {
+    padding-left: 12px;
+  }
+
+  .stepRail,
+  .customHead,
+  .actionRow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .reviewItem,
+  .optionButton {
+    grid-template-columns: 1fr;
+  }
+
+  .optionMeta {
+    justify-content: flex-start;
+    padding-left: 34px;
+  }
+
+  .reviewEditButton,
+  .secondaryButton,
+  .primaryButton {
+    width: 100%;
+  }
+
+  .customHint {
+    text-align: left;
+  }
+}
