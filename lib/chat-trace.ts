@@ -20,6 +20,19 @@ type TraceEvent = {
   payload: Record<string, unknown>;
 };
 
+/** Structured harness trace entry (Phase 5 observability). */
+export type HarnessTraceEntry = {
+  timestamp: number;
+  event: string;
+  step: number;
+  tool?: string;
+  toolCallId?: string;
+  hookResults?: Array<{ action: string; reason?: string }>;
+  permissionDecision?: "allow" | "deny" | "ask";
+  tokenBudget?: { used: number; remaining: number };
+  duration?: number;
+};
+
 const TRACE_DIR = path.join(process.cwd(), ".reqagent", "traces");
 
 function sanitizeFileName(value: string) {
