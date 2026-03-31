@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ComposerPrimitive, useThread, useThreadRuntime } from "@assistant-ui/react";
+import { useAui, useAuiState } from "@assistant-ui/store";
 import { markMessageCancelled } from "@/lib/cancel-store";
 import { ReqArrowRightIcon } from "@/components/ReqIcons";
 import styles from "@/components/ReqAgentPrimitives.module.css";
@@ -14,6 +16,7 @@ type ReqComposerProps = {
   preview?: boolean;
   previewValue?: string;
   previewRunning?: boolean;
+  workspaceId?: string;
 };
 
 export function ReqComposer({
@@ -25,12 +28,13 @@ export function ReqComposer({
   preview = false,
   previewValue,
   previewRunning = false,
+  workspaceId,
 }: ReqComposerProps) {
   if (preview) {
     return <ReqComposerPreview hint={hint} previewRunning={previewRunning} previewValue={previewValue} submitLabel={submitLabel} variant={variant} placeholder={placeholder} className={className} />;
   }
 
-  return <ReqComposerRuntime hint={hint} placeholder={placeholder} submitLabel={submitLabel} variant={variant} className={className} />;
+  return <ReqComposerRuntime hint={hint} placeholder={placeholder} submitLabel={submitLabel} variant={variant} className={className} workspaceId={workspaceId} />;
 }
 
 function ReqComposerPreview({
@@ -83,9 +87,60 @@ function ReqComposerRuntime({
   hint,
   submitLabel,
   className,
+  workspaceId = "global",
 }: Required<Pick<ReqComposerProps, "variant" | "placeholder" | "hint">> &
-  Pick<ReqComposerProps, "className" | "submitLabel">) {
+  Pick<ReqComposerProps, "className" | "submitLabel" | "workspaceId">) {
+  const aui = useAui();
+  const composerText = useAuiState((state) => state.composer.text);
+  const threadScopeId = useAuiState(
+    (state) => state.threadListItem.remoteId ?? state.threadListItem.id ?? "draft",
+  );
   const frameClassName = `${styles.composerFrame} ${variant === "landing" ? styles.composerLanding : styles.composerThread}`;
+  const storageKey = useMemo(
+    () => buildComposerDraftStorageKey(workspaceId, threadScopeId),
+    [threadScopeId, workspaceId],
+  );
+  const pendingRestoreRef = useRef<string | null>(null);
+  const [hydratedKey, setHydratedKey] = useState<string | null>(null);
+
+  // Restore persisted draft once per workspace/thread scope, but do not clobber
+  // any text already present in the live composer.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    setHydratedKey(null);
+    pendingRestoreRef.current = null;
+
+    const savedDraft = window.localStorage.getItem(storageKey);
+    const currentText = aui.composer().getState().text;
+
+    if (savedDraft && !currentText.trim()) {
+      pendingRestoreRef.current = savedDraft;
+      aui.composer().setText(savedDraft);
+      return;
+    }
+
+    setHydratedKey(storageKey);
+  }, [aui, storageKey]);
+
+  useEffect(() => {
+    if (!pendingRestoreRef.current) return;
+    if (composerText !== pendingRestoreRef.current && !composerText.trim()) return;
+
+    pendingRestoreRef.current = null;
+    setHydratedKey(storageKey);
+  }, [composerText, storageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || hydratedKey !== storageKey) return;
+
+    if (composerText.trim()) {
+      window.localStorage.setItem(storageKey, composerText);
+      return;
+    }
+
+    window.localStorage.removeItem(storageKey);
+  }, [composerText, hydratedKey, storageKey]);
 
   return (
     <ComposerPrimitive.Root className={`${styles.composerRoot} ${className ?? ""}`.trim()}>
@@ -139,4 +194,8 @@ function ComposerSendButton({ submitLabel }: { submitLabel?: string }) {
       <span>{submitLabel ?? "发送"}</span>
     </ComposerPrimitive.Send>
   );
+}
+
+function buildComposerDraftStorageKey(workspaceId: string, threadScopeId: string) {
+  return `reqagent-composer-draft:${workspaceId}:${threadScopeId}`;
 }

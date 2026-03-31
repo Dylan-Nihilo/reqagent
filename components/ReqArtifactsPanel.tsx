@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ReqMessageMarkdownPreview } from "@/components/message-ui/ReqMessageUI";
 import {
   ReqArtifactKindIcon,
@@ -10,7 +10,11 @@ import {
   ReqCopyIcon,
   ReqDownloadIcon,
 } from "@/components/ReqIcons";
-import type { ReqArtifactIconName, ReqArtifactItem, ReqPendingArtifact } from "@/lib/use-artifacts";
+import type {
+  ReqArtifactIconName,
+  ReqArtifactItem,
+  ReqPendingArtifact,
+} from "@/lib/use-artifacts";
 import styles from "@/components/ReqArtifactsPanel.module.css";
 
 type ReqArtifactsPanelProps = {
@@ -22,6 +26,7 @@ type ReqArtifactsPanelProps = {
 export function ReqArtifactsPanel({ items, pending, onClose }: ReqArtifactsPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<"copied" | "exported" | null>(null);
+  const lastAutoSelectedIdRef = useRef<string | null>(null);
 
   const selected = useMemo(
     () => items.find((item) => item.id === selectedId) ?? null,
@@ -40,6 +45,15 @@ export function ReqArtifactsPanel({ items, pending, onClose }: ReqArtifactsPanel
     const timeout = window.setTimeout(() => setFeedback(null), 1600);
     return () => window.clearTimeout(timeout);
   }, [feedback]);
+
+  useEffect(() => {
+    const latest = items[0];
+    if (!latest || latest.toolName !== "writeFile") return;
+    if (lastAutoSelectedIdRef.current === latest.id) return;
+
+    setSelectedId(latest.id);
+    lastAutoSelectedIdRef.current = latest.id;
+  }, [items]);
 
   async function handleCopy() {
     if (!selected?.markdown) return;
@@ -62,7 +76,11 @@ export function ReqArtifactsPanel({ items, pending, onClose }: ReqArtifactsPanel
 
     // Fallback: export markdown as text file
     if (!selected.markdown) return;
-    const blob = new Blob([selected.markdown], { type: "text/markdown;charset=utf-8" });
+    const blob = new Blob([selected.markdown], {
+      type: selected.previewMode === "markdown"
+        ? "text/markdown;charset=utf-8"
+        : "text/plain;charset=utf-8",
+    });
     const href = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = href;
@@ -107,12 +125,18 @@ export function ReqArtifactsPanel({ items, pending, onClose }: ReqArtifactsPanel
             </button>
             <button className={styles.actionButton} onClick={handleExport} type="button">
               <ReqDownloadIcon className={styles.buttonIcon} />
-              <span>{selected?.downloadUrl ? "下载 DOCX" : "导出 Markdown"}</span>
+              <span>
+                {selected?.downloadUrl
+                  ? "下载 DOCX"
+                  : selected.previewMode === "markdown"
+                    ? "导出 Markdown"
+                    : "导出文件"}
+              </span>
             </button>
           </div>
 
           <div className={styles.detailBody}>
-            <ReqMessageMarkdownPreview markdown={selected.markdown} />
+            <ArtifactContentPreview item={selected} />
           </div>
         </div>
       ) : (
@@ -121,7 +145,7 @@ export function ReqArtifactsPanel({ items, pending, onClose }: ReqArtifactsPanel
             <div className={styles.headerLeft}>
               <div className={styles.headerCopy}>
                 <p className={styles.title}>产物</p>
-                <p className={styles.subtitle}>从本轮工具输出中提炼出的可复用结果</p>
+                <p className={styles.subtitle}>本轮工具回执已在此侧收口为可复用结果</p>
               </div>
               <span className={styles.countBadge}>{items.length + (pending ? 1 : 0)}</span>
             </div>
@@ -185,4 +209,18 @@ export function ReqArtifactsPanel({ items, pending, onClose }: ReqArtifactsPanel
 
 function ArtifactIcon({ icon }: { icon: ReqArtifactIconName }) {
   return <ReqArtifactKindIcon className={styles.itemGlyph} kind={icon} />;
+}
+
+function ArtifactContentPreview({ item }: { item: ReqArtifactItem }) {
+  if (item.previewMode === "markdown") {
+    return <ReqMessageMarkdownPreview markdown={item.markdown} />;
+  }
+
+  return (
+    <pre
+      className={item.previewMode === "code" ? styles.codePreview : styles.textPreview}
+    >
+      {item.markdown}
+    </pre>
+  );
 }

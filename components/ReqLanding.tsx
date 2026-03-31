@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useComposerRuntime } from "@assistant-ui/react";
+import { useAui } from "@assistant-ui/store";
 import { ReqBrandMark } from "@/components/ReqBrandMark";
 import { ReqComposer } from "@/components/ReqComposer";
 import styles from "@/components/ReqLanding.module.css";
@@ -89,7 +89,7 @@ export function ReqLanding() {
 }
 
 function ReqSuggestionChips() {
-  const composer = useComposerRuntime();
+  const aui = useAui();
 
   return (
     <div className={styles.suggestions}>
@@ -97,7 +97,7 @@ function ReqSuggestionChips() {
         <button
           className={styles.chip}
           key={s}
-          onClick={() => composer.setText(s)}
+          onClick={() => aui.composer().setText(s)}
           type="button"
         >
           {s}

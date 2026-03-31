@@ -1,0 +1,115 @@
+.notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  margin: 4px 0 0;
+  padding: 8px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.noticeIdle {
+  opacity: 0.9;
+}
+
+.noticeActive {
+  opacity: 1;
+}
+
+.noticeSuccess {
+  opacity: 1;
+}
+
+.rail {
+  width: 1px;
+  min-height: 40px;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ra-text-3) 36%, transparent);
+  transition: background-color 150ms ease;
+}
+
+.noticeActive .rail,
+.noticeSuccess .rail {
+  background: var(--ra-text-1);
+}
+
+.body {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.topline,
+.pathRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.label,
+.status,
+.mode,
+.handoff {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-family: var(--reqagent-mono);
+  font-size: 0.585rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.label,
+.mode {
+  color: var(--ra-text-3);
+  background: color-mix(in srgb, var(--ra-surface) 80%, var(--ra-surface-sub));
+  border-color: var(--ra-border-soft);
+}
+
+.status,
+.handoff {
+  color: var(--ra-text-2);
+  background: color-mix(in srgb, var(--ra-text-1) 5%, transparent);
+  border-color: color-mix(in srgb, var(--ra-text-1) 10%, transparent);
+}
+
+.handoff {
+  margin-left: auto;
+  color: var(--ra-text-3);
+  background: transparent;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--ra-text-3) 22%, transparent);
+}
+
+.path {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--reqagent-mono);
+  font-size: 0.7rem;
+  color: var(--ra-text-1);
+}
+
+.caption {
+  margin: 0;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--ra-text-3);
+}
+
+@media (max-width: 767px) {
+  .handoff {
+    margin-left: 0;
+  }
+}

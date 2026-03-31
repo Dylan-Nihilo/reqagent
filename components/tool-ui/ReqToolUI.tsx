@@ -39,6 +39,8 @@ import {
   type ReqAgentMessageMeta,
   type ToolInvocationViewState,
 } from "@/lib/types";
+import { shouldAutoExpandToolSurface } from "@/lib/tool-surface";
+import { getReqAgentEnvelope, type ReqAgentEnvelope } from "@/lib/workspace/tool-envelope";
 
 type ToolMetric = {
   label: string;
@@ -147,14 +149,13 @@ export function ReqToolPart(props: ToolCallMessagePartProps) {
     return <ReqMcpToolPart meta={meta} registryItem={registryItem} state={viewState} {...props} />;
   }
 
-  const metrics = extractStructuredMetrics(props.result);
+  const envelope = normalizeReqAgentEnvelope(props.result);
+  const metrics = envelope?.metrics
+    ? Object.entries(envelope.metrics).map(([label, value]) => ({ label, value: String(value) }))
+    : extractStructuredMetrics(props.result);
+  const summary = envelope?.summary ?? buildToolSummary({ registryItem, result: props.result, state: viewState });
   const approval = props.interrupt?.type === "human" ? props.interrupt.payload : null;
   const plan = extractPlan(props.result);
-  const summary = buildToolSummary({
-    registryItem,
-    result: props.result,
-    state: viewState,
-  });
   const debugInfo = {
     argsText: props.argsText,
     interrupt: props.interrupt ?? null,
@@ -304,9 +305,11 @@ export function ReqMcpToolInvocationPreview({
         preferredOrder: 999,
         rendererKind: "mcp",
         riskLevel: "caution",
+        source: "mcp:preview",
         supportsApproval: false,
         title: title ?? humanizeToolName(sourceToolName ?? name),
         usageHint: `${serverLabel} · ${transport} · 外部 MCP 工具`,
+        promptExposure: "on-demand",
         mcp: {
           serverId: "preview",
           serverLabel,
@@ -334,46 +337,19 @@ function ReqToolCatalogCall({
   result: AvailableToolsResult;
 }) {
   const registryItem = getToolRegistryItem(name);
+  const metrics = [{ label: "工具数", value: String(result.total) }];
 
   return (
-    <article className={joinClasses(getToolItemClassName(state), styles.toolItemExpanded, styles.toolCatalogCall)}>
-      <div className={styles.toolStrip}>
-        <div className={styles.toolTopline}>
-          <div className={styles.toolIdentity}>
-            <div className={styles.toolTitleRow}>
-              <span className={styles.toolIconBadge}>
-                <ToolGlyph name={name} registryItem={registryItem} />
-              </span>
-              <p className={styles.toolTitle}>{title ?? registryItem?.title ?? name}</p>
-              <span className={`${styles.toolName} ${styles.code}`}>{name}</span>
-            </div>
-            <p className={styles.toolSummary}>{result.summary}</p>
-          </div>
-
-          <div className={styles.toolAside}>
-            <span className={getStatusTokenClassName(state)}>
-              <StatusGlyph state={state} />
-              {getToolInvocationStateLabel(state)}
-            </span>
-          </div>
-        </div>
-
-        <div className={styles.metricStrip}>
-          <span className={styles.metricToken}>
-            <span className={styles.metricLabel}>工具数</span>
-            <span className={styles.metricValue}>{String(result.total)}</span>
-          </span>
-        </div>
-      </div>
-
-      <div className={joinClasses(styles.toolPanelShell, styles.toolPanelShellOpen)}>
-        <div className={styles.toolPanelWrap}>
-          <div className={styles.toolPanel}>
-            <ReqToolCatalogPreview result={result} />
-          </div>
-        </div>
-      </div>
-    </article>
+    <ToolShell
+      description={registryItem?.description ?? "当前可用工具目录与使用建议。"}
+      extra={<ReqToolCatalogPreview result={result} />}
+      metrics={metrics}
+      name={name}
+      rawOutput={result}
+      state={state}
+      summary={result.summary}
+      title={title ?? registryItem?.title}
+    />
   );
 }
 
@@ -719,18 +695,22 @@ function ToolShell({
   const hasRawDetails = Boolean(formattedInput || formattedOutput || formattedDebug);
   const hasDescription = Boolean(description && description !== summary);
   const hasPanel = Boolean(extra || hasRawDetails || hasDescription);
-  const [expanded, setExpanded] = useState(state === "awaiting_approval");
+  const shouldAutoExpand = shouldAutoExpandToolSurface({ name, registryItem, state });
+  const [expanded, setExpanded] = useState(shouldAutoExpand);
   const [rawOpen, setRawOpen] = useState(false);
 
-  // Auto-expand when approval is needed (state may transition after mount)
+  // Keep detail drawer compact by default. Only force-open high-priority states.
   const prevState = useRef(state);
+  const prevAutoExpand = useRef(shouldAutoExpand);
   useEffect(() => {
-    if (prevState.current !== state && state === "awaiting_approval") {
+    const enteredAutoExpandState = !prevAutoExpand.current && shouldAutoExpand;
+    if (enteredAutoExpandState) {
       setExpanded(true);
       setRawOpen(false);
     }
     prevState.current = state;
-  }, [state]);
+    prevAutoExpand.current = shouldAutoExpand;
+  }, [shouldAutoExpand, state]);
   const lead = summary ?? description;
 
   const stripContent = (
@@ -1059,6 +1039,7 @@ function normalizeAvailableToolDescriptor(value: unknown, fallbackCategory: Tool
   return {
     name,
     title: typeof candidate.title === "string" && candidate.title.trim() ? candidate.title : humanizeToolName(name),
+    source: typeof candidate.source === "string" && candidate.source.trim() ? candidate.source : "builtin",
     description:
       typeof candidate.description === "string" && candidate.description.trim()
         ? candidate.description
@@ -1070,6 +1051,8 @@ function normalizeAvailableToolDescriptor(value: unknown, fallbackCategory: Tool
     riskLevel: normalizeToolRiskLevel(candidate.riskLevel),
     preferredToBash: typeof candidate.preferredToBash === "boolean" ? candidate.preferredToBash : name !== "bash",
     supportsApproval: Boolean(candidate.supportsApproval),
+    promptExposure: candidate.promptExposure === "on-demand" ? ("on-demand" as const) : ("always" as const),
+    mounted: typeof candidate.mounted === "boolean" ? candidate.mounted : true,
   };
 }
 
@@ -1130,12 +1113,14 @@ function createSyntheticMcpRegistryItem(toolName: string, meta: ReqAgentMessageM
     name: toolName,
     title: humanizeToolName(toolName),
     category: "mcp",
+    source: `mcp:${server.id}`,
     description: `${server.label} 提供的 MCP 工具。`,
     usageHint: `${server.label} · ${server.transport} · 运行时注入`,
     riskLevel: "caution",
     preferredOrder: 999,
     supportsApproval: false,
     rendererKind: "mcp",
+    promptExposure: "on-demand",
     mcp: {
       serverId: server.id,
       serverLabel: server.label,
@@ -1143,6 +1128,10 @@ function createSyntheticMcpRegistryItem(toolName: string, meta: ReqAgentMessageM
       mode: server.mode,
     },
   };
+}
+
+function normalizeReqAgentEnvelope(result: unknown): ReqAgentEnvelope | null {
+  return getReqAgentEnvelope(result);
 }
 
 function normalizeMcpToolResult(result: unknown) {

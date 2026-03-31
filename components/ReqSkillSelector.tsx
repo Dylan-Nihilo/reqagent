@@ -2,29 +2,42 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ReqAgentSkillManifest, ReqAgentSkillType } from "@/lib/skills/types";
-import {
-  getWorkspaceSkills,
-  setWorkspaceSkills,
-} from "@/lib/workspace-client";
 import styles from "@/components/ReqSkillSelector.module.css";
 
 type SkillListResponse = {
   skills?: ReqAgentSkillManifest[];
 };
 
+type ProjectConfigResponse = {
+  defaultTemplateId?: string;
+  enabledSkillIds?: string[];
+};
+
 type ReqSkillSelectorProps = {
   workspaceId: string;
 };
 
-export function ReqSkillSelector({ workspaceId }: ReqSkillSelectorProps) {
+export function ReqSkillSelector({ workspaceId: _workspaceId }: ReqSkillSelectorProps) {
   const [skills, setSkills] = useState<ReqAgentSkillManifest[]>([]);
   const [activeIds, setActiveIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setActiveIds(new Set(getWorkspaceSkills(workspaceId)));
-  }, [workspaceId]);
+  async function persistEnabledSkillIds(ids: string[]) {
+    const response = await fetch("/api/project/config", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        enabledSkillIds: ids,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Request failed: ${response.status}`);
+    }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -33,21 +46,38 @@ export function ReqSkillSelector({ workspaceId }: ReqSkillSelectorProps) {
     setIsLoading(true);
     setLoadError(null);
 
-    fetch("/api/skills", {
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
+    Promise.all([
+      fetch("/api/skills", {
+        cache: "no-store",
+        signal: controller.signal,
+      }).then(async (response) => {
         if (!response.ok) {
           throw new Error(`Request failed: ${response.status}`);
         }
         return response.json() as Promise<SkillListResponse>;
-      })
-      .then((payload) => {
+      }),
+      fetch("/api/project/config", {
+        cache: "no-store",
+        signal: controller.signal,
+      }).then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Request failed: ${response.status}`);
+        }
+        return response.json() as Promise<ProjectConfigResponse>;
+      }),
+    ])
+      .then(([skillsPayload, configPayload]) => {
         if (cancelled) {
           return;
         }
-        setSkills(Array.isArray(payload.skills) ? payload.skills : []);
+        setSkills(Array.isArray(skillsPayload.skills) ? skillsPayload.skills : []);
+        setActiveIds(
+          new Set(
+            Array.isArray(configPayload.enabledSkillIds)
+              ? configPayload.enabledSkillIds
+              : [],
+          ),
+        );
       })
       .catch((error: unknown) => {
         if (cancelled || controller.signal.aborted) {
@@ -82,12 +112,14 @@ export function ReqSkillSelector({ workspaceId }: ReqSkillSelectorProps) {
       );
 
       if (next.size !== current.size) {
-        setWorkspaceSkills(workspaceId, Array.from(next));
+        void persistEnabledSkillIds(Array.from(next)).catch(() => {
+          setLoadError("同步项目技能配置失败");
+        });
       }
 
       return next;
     });
-  }, [skills, workspaceId]);
+  }, [skills]);
 
   const activeCount = activeIds.size;
   const orderedSkills = useMemo(
@@ -109,7 +141,9 @@ export function ReqSkillSelector({ workspaceId }: ReqSkillSelectorProps) {
         next.add(skillId);
       }
 
-      setWorkspaceSkills(workspaceId, Array.from(next));
+      void persistEnabledSkillIds(Array.from(next)).catch(() => {
+        setLoadError("同步项目技能配置失败");
+      });
       return next;
     });
   }
@@ -119,9 +153,9 @@ export function ReqSkillSelector({ workspaceId }: ReqSkillSelectorProps) {
       <header className={styles.header}>
         <div className={styles.headerCopy}>
           <p className={styles.eyebrow}>Skills</p>
-          <h3 className={styles.heading}>已为当前工作区装载的能力</h3>
+          <h3 className={styles.heading}>已为当前项目装载的能力</h3>
           <p className={styles.description}>
-            切换后立即写入本地配置，下一条消息开始生效。
+            切换后立即写入项目配置，下一条消息开始生效。
           </p>
         </div>
         <span className={styles.counter}>

@@ -7,15 +7,15 @@ import {
   useMessage,
   useMessageTiming,
   useThread,
-  useComposerRuntime,
   useAuiState,
   type MessageStatus,
 } from "@assistant-ui/react";
+import { useAui } from "@assistant-ui/store";
 import { ReqComposer } from "@/components/ReqComposer";
 import { ReqMessage } from "@/components/ReqMessage";
 import { ReqStreamingIndicator } from "@/components/ReqStreamingIndicator";
 import { ReqScrollToBottom } from "@/components/ReqScrollToBottom";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReqNavDrawer } from "@/components/ReqNavDrawer";
 import { ReqBrandMark } from "@/components/ReqBrandMark";
 import {
@@ -39,6 +39,7 @@ import type { ReqAgentLoadedSkillMeta } from "@/lib/skills/types";
 import type { AgentActivity, ReqAgentMessageMeta } from "@/lib/types";
 import { useArtifacts } from "@/lib/use-artifacts";
 import { useIsMessageCancelled } from "@/lib/cancel-store";
+import { resolveInteractiveQaCueSurface } from "@/lib/interactive-qa-surface";
 
 const SUGGESTIONS = [
   "分析电商平台的需求",
@@ -72,6 +73,8 @@ type ReqAgentUIProps = {
 
 export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
   const messageCount = useThread((s) => s.messages.length);
+  const threadMessages = useThread((state) => state.messages);
+  const threadIsRunning = useThread((state) => state.isRunning);
   const remoteId = useAuiState((state) => state.threadListItem.remoteId);
   const initialHasThread = messageCount > 0 || Boolean(remoteId);
   const [viewMode, setViewMode] = useState<"landing" | "thread">(
@@ -138,12 +141,56 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
   const showArtifactsPanel = hasArtifacts && !artifactsCollapsed;
   const artifactCount = artifacts.items.length + (artifacts.pending ? 1 : 0);
   const workspaceCode = workspaceId.replace(/^ws_/, "").slice(0, 8).toUpperCase();
+  const lastAutoRevealTokenRef = useRef<string | null>(null);
+  const clarificationCue = useMemo(() => {
+    for (let index = threadMessages.length - 1; index >= 0; index -= 1) {
+      const message = threadMessages[index];
+      if (message?.role !== "assistant") continue;
+
+      const metaObj = message.metadata as Record<string, unknown> | undefined;
+      const meta = metaObj?.custom as ReqAgentMessageMeta | undefined;
+      const cue = resolveInteractiveQaCueSurface(
+        {
+          content: message.content,
+        },
+        meta,
+      );
+      if (!cue) return null;
+
+      const trailingMessages = threadMessages.slice(index + 1);
+      if (trailingMessages.some((candidate) => candidate.role === "assistant")) {
+        return null;
+      }
+
+      if (trailingMessages.every((candidate) => candidate.role === "user")) {
+        return cue;
+      }
+
+      return threadIsRunning ? cue : null;
+    }
+
+    return null;
+  }, [threadIsRunning, threadMessages]);
+
+  const latestWriteFileToken = artifacts.pending?.toolName === "writeFile"
+    ? `pending:${artifacts.pending.id}`
+    : artifacts.items[0]?.toolName === "writeFile"
+      ? `item:${artifacts.items[0].id}`
+      : null;
 
   useEffect(() => {
     if (!hasArtifacts) {
       setArtifactsCollapsed(false);
     }
   }, [hasArtifacts]);
+
+  useEffect(() => {
+    if (!latestWriteFileToken) return;
+    if (latestWriteFileToken === lastAutoRevealTokenRef.current) return;
+
+    setArtifactsCollapsed(false);
+    lastAutoRevealTokenRef.current = latestWriteFileToken;
+  }, [latestWriteFileToken]);
 
   return (
     <div
@@ -261,6 +308,7 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
                           placeholder="描述你的需求、流程、模板或业务约束。"
                           submitLabel="开始分析"
                           variant="landing"
+                          workspaceId={workspaceId}
                         />
                       </div>
 
@@ -352,7 +400,10 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
                     </div>
 
                     <div className={styles.topBarGroup}>
-                      <span className={styles.topBarMeta}>analysis canvas</span>
+                      <div className={styles.topBarWorkspace}>
+                        <span className={styles.canvasLedgerPill}>workspace</span>
+                        <code className={styles.canvasLedgerCode}>{workspaceCode}</code>
+                      </div>
                       <button
                         className={[
                           styles.ghostBtn,
@@ -398,19 +449,6 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
                   </aside>
                   <div className={styles.threadMain}>
                     <div className={styles.threadMainInner}>
-                      <div className={styles.canvasLedger}>
-                        <div>
-                          <p className={styles.canvasLedgerLabel}>当前工作区</p>
-                          <p className={styles.canvasLedgerText}>
-                            对话、工具调用与产物会被整理成一份连续工作稿。
-                          </p>
-                        </div>
-                        <div className={styles.canvasLedgerStats}>
-                          <span className={styles.canvasLedgerPill}>workspace</span>
-                          <code className={styles.canvasLedgerCode}>{workspaceCode}</code>
-                        </div>
-                      </div>
-
                       <ThreadPrimitive.Root className={styles.threadRoot}>
                         <ThreadPrimitive.Viewport
                           autoScroll
@@ -427,24 +465,34 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
                               }}
                             />
                           </div>
+                          <ThreadPrimitive.ViewportFooter
+                            className={[
+                              styles.viewportFooter,
+                              clarificationCue ? styles.viewportFooterQaMode : "",
+                            ].join(" ").trim()}
+                          >
+                            <div className={styles.viewportFooterInner}>
+                              <ThreadPrimitive.ScrollToBottom
+                                behavior="smooth"
+                                className={styles.scrollToBottomButton}
+                              >
+                                <ReqScrollToBottom>回到底部</ReqScrollToBottom>
+                              </ThreadPrimitive.ScrollToBottom>
+                              {clarificationCue ? null : (
+                                <div className={styles.composerDock}>
+                                  <ReqComposer
+                                    hint="enter 发送"
+                                    placeholder="继续推进这个需求。"
+                                    submitLabel="继续"
+                                    variant="thread"
+                                    workspaceId={workspaceId}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </ThreadPrimitive.ViewportFooter>
                         </ThreadPrimitive.Viewport>
                       </ThreadPrimitive.Root>
-                      <div className={styles.threadFooter}>
-                        <ThreadPrimitive.ScrollToBottom
-                          behavior="smooth"
-                          className={styles.scrollToBottomButton}
-                        >
-                          <ReqScrollToBottom>回到底部</ReqScrollToBottom>
-                        </ThreadPrimitive.ScrollToBottom>
-                        <div className={styles.composerDock}>
-                          <ReqComposer
-                            hint="enter 发送"
-                            placeholder="继续推进这个需求。"
-                            submitLabel="继续"
-                            variant="thread"
-                          />
-                        </div>
-                      </div>
                     </div>
                   </div>
 
@@ -477,14 +525,14 @@ export function ReqAgentUI({ workspaceId }: ReqAgentUIProps) {
 }
 
 function ReqSuggestionChips() {
-  const composer = useComposerRuntime();
+  const aui = useAui();
   return (
     <div className={styles.suggestions}>
       {SUGGESTIONS.map((s) => (
         <button
           className={styles.chip}
           key={s}
-          onClick={() => composer.setText(s)}
+          onClick={() => aui.composer().setText(s)}
           type="button"
         >
           {s}

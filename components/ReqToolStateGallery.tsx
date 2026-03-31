@@ -34,6 +34,8 @@ const galleryMcpTools: ToolRegistryItem[] = [
     preferredOrder: 500,
     supportsApproval: false,
     rendererKind: "mcp",
+    source: "mcp:filesystem",
+    promptExposure: "on-demand",
     mcp: {
       serverId: "filesystem",
       serverLabel: "Workspace Filesystem",
@@ -52,6 +54,8 @@ const galleryMcpTools: ToolRegistryItem[] = [
     preferredOrder: 510,
     supportsApproval: false,
     rendererKind: "mcp",
+    source: "mcp:filesystem",
+    promptExposure: "on-demand",
     mcp: {
       serverId: "filesystem",
       serverLabel: "Workspace Filesystem",
@@ -70,6 +74,8 @@ const galleryMcpTools: ToolRegistryItem[] = [
     preferredOrder: 520,
     supportsApproval: false,
     rendererKind: "mcp",
+    source: "mcp:browser",
+    promptExposure: "on-demand",
     mcp: {
       serverId: "browser",
       serverLabel: "Browser MCP",
