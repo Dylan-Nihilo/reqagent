@@ -1,7 +1,14 @@
 import { and, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import type { UIMessage } from "ai";
 import { db } from "@/lib/db";
-import { messages, threads, workspaces, type MessageRow, type ThreadRow } from "@/lib/db/schema";
+import { messages, threads, workspaces, type MessageRow } from "@/lib/db/schema";
+import {
+  parseSummary,
+  serializeSummary,
+  type SummaryRecord,
+  type ThreadSummaryContent,
+  type WorkspaceSummaryContent,
+} from "@/lib/db/summary";
 import {
   AI_SDK_V6_MESSAGE_FORMAT,
   DEFAULT_THREAD_TITLE,
@@ -59,11 +66,15 @@ function deserializeMessageMetadata(value: string) {
   };
 }
 
-function mapThreadRow(
-  row: ThreadRow & {
-    messageCount?: number;
-  },
-): ReqAgentThreadRecord {
+function mapThreadRow(row: {
+  id: string;
+  workspaceId: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  isArchived: boolean;
+  messageCount?: number;
+}): ReqAgentThreadRecord {
   return {
     id: row.id,
     workspaceId: row.workspaceId,
@@ -257,6 +268,7 @@ export function getThreadMessages(threadId: string) {
     .where(eq(messages.threadId, threadId))
     .orderBy(messages.createdAt)
     .all()
+    .filter((row) => typeof row.id === "string" && row.id.trim().length > 0)
     .map(mapMessageRow);
 }
 
@@ -293,6 +305,10 @@ export function getThreadWithMessages(threadId: string) {
 }
 
 export function upsertStoredMessageEntry(threadId: string, entry: ReqAgentStoredMessageEntry) {
+  if (!entry.id.trim()) {
+    return;
+  }
+
   const timestamp = nowMs();
   const existing = db
     .select({
@@ -348,6 +364,7 @@ export function syncThreadUiMessages(threadId: string, uiMessages: ReadonlyArray
 
   uiMessages.forEach((message, index) => {
     if (!isReqAgentMessageRole(message.role)) return;
+    if (!message.id.trim()) return;
 
     const parentId = incomingIds.at(-1) ?? null;
     incomingIds.push(message.id);
@@ -404,3 +421,51 @@ export function deleteMessagesByIds(threadId: string, ids: string[]) {
     .run();
 }
 
+function buildSummaryRecord<T extends ThreadSummaryContent | WorkspaceSummaryContent>(
+  base: T | null,
+  updatedAt: number,
+): SummaryRecord<T> {
+  return { ...(base ?? ({} as T)), updatedAt };
+}
+
+export function getThreadSummary(threadId: string): SummaryRecord<ThreadSummaryContent> | null {
+  const row = db
+    .select({ summaryJson: threads.summaryJson, summaryUpdatedAt: threads.summaryUpdatedAt })
+    .from(threads)
+    .where(eq(threads.id, threadId))
+    .get();
+
+  if (!row) return null;
+
+  const parsed = parseSummary<ThreadSummaryContent>(row.summaryJson);
+  return buildSummaryRecord(parsed, row.summaryUpdatedAt);
+}
+
+export function setThreadSummary(threadId: string, summary: ThreadSummaryContent) {
+  const payload = serializeSummary(summary ?? {});
+  db.update(threads)
+    .set({ summaryJson: payload, summaryUpdatedAt: Date.now() })
+    .where(eq(threads.id, threadId))
+    .run();
+}
+
+export function getWorkspaceSummary(workspaceId: string): SummaryRecord<WorkspaceSummaryContent> | null {
+  const row = db
+    .select({ summaryJson: workspaces.summaryJson, summaryUpdatedAt: workspaces.summaryUpdatedAt })
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId))
+    .get();
+
+  if (!row) return null;
+
+  const parsed = parseSummary<WorkspaceSummaryContent>(row.summaryJson);
+  return buildSummaryRecord(parsed, row.summaryUpdatedAt);
+}
+
+export function setWorkspaceSummary(workspaceId: string, summary: WorkspaceSummaryContent) {
+  const payload = serializeSummary(summary ?? {});
+  db.update(workspaces)
+    .set({ summaryJson: payload, summaryUpdatedAt: Date.now() })
+    .where(eq(workspaces.id, workspaceId))
+    .run();
+}

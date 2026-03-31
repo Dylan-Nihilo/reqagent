@@ -5,6 +5,8 @@ export const workspaces = sqliteTable("workspaces", {
   title: text("title").notNull(),
   createdAt: integer("created_at", { mode: "number" }).notNull(),
   updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+  summaryJson: text("summary_json").notNull().default("{}"),
+  summaryUpdatedAt: integer("summary_updated_at", { mode: "number" }).notNull().default(0),
 });
 
 export const threads = sqliteTable(
@@ -18,6 +20,8 @@ export const threads = sqliteTable(
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     updatedAt: integer("updated_at", { mode: "number" }).notNull(),
     isArchived: integer("is_archived", { mode: "boolean" }).notNull().default(false),
+    summaryJson: text("summary_json").notNull().default("{}"),
+    summaryUpdatedAt: integer("summary_updated_at", { mode: "number" }).notNull().default(0),
   },
   (table) => ({
     workspaceUpdatedAtIdx: index("threads_workspace_updated_at_idx").on(table.workspaceId, table.updatedAt),
@@ -45,4 +49,3 @@ export const messages = sqliteTable(
 export type WorkspaceRow = typeof workspaces.$inferSelect;
 export type ThreadRow = typeof threads.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
-
