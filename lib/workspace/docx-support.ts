@@ -651,10 +651,6 @@ function countPlaceholderResiduals(value: string) {
   return (value.match(/\{\{[^{}]+\}\}/g) ?? []).length;
 }
 
-function isPlaceholderText(value: string) {
-  return /^\{\{[^{}]+\}\}$/.test(value.trim());
-}
-
 function toRatio(actual: number, target: number) {
   if (!target) return 1;
   return Number((actual / target).toFixed(2));
@@ -765,15 +761,6 @@ function extractXmlText(xml: string) {
         .replace(/<[^>]+>/g, " "),
     ),
   );
-}
-
-async function readZipEntry(docxPath: string, entryPath: string) {
-  try {
-    const { stdout } = await execa("unzip", ["-p", docxPath, entryPath]);
-    return stdout;
-  } catch {
-    return "";
-  }
 }
 
 function parseStyleSummaries(stylesXml: string) {
@@ -1424,21 +1411,6 @@ function parseMarkdownList(body: string) {
           .replace(/^\d+\.\s+/, ""),
       ),
     );
-}
-
-function parseKeyValueLines(body: string) {
-  const result: Record<string, string> = {};
-
-  for (const rawLine of body.split(/\r?\n/)) {
-    for (const segment of rawLine.split(/[；;]/)) {
-      const line = segment.trim().replace(/^[-*+]\s+/, "");
-      const match = line.match(/^([^:：]+)[:：]\s*(.+)$/);
-      if (!match) continue;
-      result[normalizeWhitespace(match[1] ?? "")] = normalizeWhitespace(match[2] ?? "");
-    }
-  }
-
-  return result;
 }
 
 function parseMarkdownTable(body: string) {

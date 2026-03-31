@@ -1,3 +1,4 @@
+import type { UIMessage } from "ai";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("ai", async () => {
@@ -18,12 +19,16 @@ vi.mock("ai", async () => {
 
 import { prepareThreadSummaryContext, mergeWorkspaceSummary } from "../thread-summary";
 
+function asUiMessages(value: unknown): UIMessage[] {
+  return value as UIMessage[];
+}
+
 describe("thread-summary", () => {
   it("does not compact short conversations", async () => {
-    const messages = [
+    const messages = asUiMessages([
       { id: "1", role: "user", parts: [{ type: "text", text: "你好" }] },
       { id: "2", role: "assistant", parts: [{ type: "text", text: "你好，需要我做什么？" }] },
-    ] as any;
+    ]);
 
     const result = await prepareThreadSummaryContext({
       model: {} as never,
@@ -37,7 +42,7 @@ describe("thread-summary", () => {
   });
 
   it("compacts long conversations and keeps the recent window", async () => {
-    const messages = Array.from({ length: 26 }, (_, index) => ({
+    const messages = asUiMessages(Array.from({ length: 26 }, (_, index) => ({
       id: String(index + 1),
       role: index % 2 === 0 ? "user" : "assistant",
       parts: [
@@ -60,7 +65,7 @@ describe("thread-summary", () => {
             : { text: `message-${index}` }),
         },
       ],
-    })) as any;
+    })));
 
     const result = await prepareThreadSummaryContext({
       model: {} as never,
@@ -79,7 +84,7 @@ describe("thread-summary", () => {
       trackedFiles: ["docs/old.md"],
       updatedAt: Date.now(),
     };
-    const messages = [
+    const messages = asUiMessages([
       {
         id: "1",
         role: "assistant",
@@ -99,7 +104,7 @@ describe("thread-summary", () => {
           },
         ],
       },
-    ] as any;
+    ]);
 
     const merged = mergeWorkspaceSummary(currentSummary, messages);
 

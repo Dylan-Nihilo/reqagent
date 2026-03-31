@@ -1,10 +1,4 @@
-import {
-  streamText,
-  generateText,
-  stepCountIs,
-  convertToModelMessages,
-  type UIMessage,
-} from "ai";
+import type { UIMessage } from "ai";
 import { getProviderInfo, reqAgentModel } from "@/lib/ai-provider";
 import {
   appendChatTrace,
@@ -39,6 +33,13 @@ import {
 } from "@/lib/workspace/context";
 import { buildMetadataHandler } from "@/lib/workspace/streaming-metadata";
 import { buildDocxClarificationHint, getDocxClarificationState } from "@/lib/docx-workflow";
+import { AgentLoopController } from "@/lib/harness/agent-loop";
+import { HookRegistry } from "@/lib/harness/hooks";
+import { registerBuiltinHooks } from "@/lib/harness/builtin-hooks";
+import { PermissionPolicy } from "@/lib/harness/permissions";
+import { ContextBudget } from "@/lib/harness/context-budget";
+import { readHarnessConfig } from "@/lib/harness/harness-config";
+import type { AgentEvent } from "@/lib/harness/agent-events";
 
 export const maxDuration = 60;
 
@@ -150,73 +151,109 @@ export async function POST(req: Request) {
     capabilitySnapshot: runtimeCapabilities.capabilitySnapshot,
   });
 
+  // ---------------------------------------------------------------------------
+  // Harness setup — AgentLoopController + Hooks + Permissions + Budget
+  // ---------------------------------------------------------------------------
+
+  const harnessConfig = await readHarnessConfig();
+
+  const hookRegistry = new HookRegistry();
+  const permissionPolicy = new PermissionPolicy();
+  const contextBudget = new ContextBudget({
+    maxTokens: harnessConfig.compaction.maxTokens ?? 128_000,
+    warningThreshold: harnessConfig.compaction.warningThreshold,
+    compactionThreshold: harnessConfig.compaction.compactionThreshold,
+    retainRecentCount: harnessConfig.compaction.retainRecentCount,
+  });
+
+  // Track current context usage
+  contextBudget.track(uiMessages as Array<{ content?: string; parts?: unknown[] }>);
+
+  registerBuiltinHooks(hookRegistry, {
+    policy: permissionPolicy,
+    audit: { traceContext: runtimeContext },
+    budget: {
+      maxSteps: harnessConfig.maxSteps,
+      maxTokens: harnessConfig.hooks.budgetLimit?.maxTokens,
+    },
+  });
+
+  const loopController = new AgentLoopController({
+    config: {
+      maxSteps: harnessConfig.maxSteps,
+      stepTimeoutMs: harnessConfig.stepTimeoutMs,
+      interruptible: harnessConfig.interruptible,
+    },
+    hooks: hookRegistry,
+    contextBudget,
+  });
+
+  // Collect harness events for debug metadata
+  const harnessEvents: AgentEvent[] = [];
+  const hooksFired: string[] = [];
+  const permissionDecisions: Record<string, "allow" | "deny" | "ask"> = {};
+
   let result;
   try {
-    result = streamText({
-      model: reqAgentModel,
-      system: serializedSystemPrompt,
-      messages: await convertToModelMessages([...threadSummaryContext.modelMessages]),
-      tools: runtimeCapabilities.allTools,
-      stopWhen: stepCountIs(8),
-      experimental_repairToolCall: async ({ toolCall, inputSchema, messages }) => {
-        console.log(`[ReqAgent repair] tool=${toolCall.toolName} input=${toolCall.input?.slice(0, 80)}`);
-        const schema = await inputSchema({ toolName: toolCall.toolName });
-        const { text } = await generateText({
-          model: reqAgentModel,
-          system: "You repair a malformed or truncated tool call JSON. Return ONLY valid JSON that matches the schema. No explanation.",
-          prompt: `Tool: ${toolCall.toolName}\nSchema: ${JSON.stringify(schema)}\nMalformed input: ${toolCall.input}\nUser message context: ${JSON.stringify(messages.slice(-2))}\n\nReturn valid JSON only:`,
-        });
-        try {
-          JSON.parse(text.trim());
-          return { ...toolCall, input: text.trim() };
-        } catch {
-          return null;
-        }
+    result = await loopController.run(
+      {
+        model: reqAgentModel,
+        system: serializedSystemPrompt,
+        messages: threadSummaryContext.modelMessages,
+        tools: runtimeCapabilities.allTools,
+        providerOptions: {
+          openai: { store: providerInfo.wireApi === "responses" ? true : undefined },
+        },
+        onFinish: async () => {
+          await runtimeCapabilities.mcpRuntime.cleanup();
+        },
       },
-      providerOptions: {
-        openai: { store: providerInfo.wireApi === "responses" ? true : undefined },
-      },
-      onFinish: async () => {
-        await runtimeCapabilities.mcpRuntime.cleanup();
-      },
-      onStepFinish: ({ toolCalls, toolResults, text, finishReason }) => {
-        const stepPayload = {
-          finishReason,
-          text,
-          toolCalls: toolCalls.map((toolCall) => ({
-            toolName: toolCall.toolName,
-            input: toolCall.input,
-          })),
-          toolResults: toolResults.map((toolResult) => {
-            const candidate = toolResult as Record<string, unknown>;
-            return {
-              toolName: candidate.toolName,
-              output: candidate.output,
-              result: candidate.result,
-            };
-          }),
-        };
-        metadata.recordStep(stepPayload);
-        void appendChatTrace(
-          runtimeContext,
-          "step.finished",
-          buildStepTracePayload(stepPayload),
-        ).catch((error) => {
-          console.error("[ReqAgent trace] failed to append step trace", error);
-        });
+      {
+        onStep: (step, stepResult) => {
+          const stepPayload = {
+            finishReason: stepResult.finishReason,
+            text: stepResult.text,
+            toolCalls: stepResult.toolCalls.map((tc) => ({
+              toolName: tc.toolName,
+              input: tc.input,
+            })),
+            toolResults: stepResult.toolResults.map((tr) => ({
+              toolName: tr.toolName,
+              output: tr.output,
+              result: tr.output,
+            })),
+          };
+          metadata.recordStep(stepPayload);
+          void appendChatTrace(
+            runtimeContext,
+            "step.finished",
+            buildStepTracePayload(stepPayload),
+          ).catch((error) => {
+            console.error("[ReqAgent trace] failed to append step trace", error);
+          });
 
-        if (toolCalls.length > 0) {
-          console.log(
-            "[ReqAgent step] tools:",
-            toolCalls.map((toolCall) => `${toolCall.toolName}(${JSON.stringify(toolCall.input).slice(0, 120)})`),
-          );
-        }
-        if (text) {
-          console.log(`[ReqAgent step] text: ${text.slice(0, 80)}...`);
-        }
-        console.log(`[ReqAgent step] finish: ${finishReason}, toolResults: ${toolResults.length}`);
+          if (stepResult.toolCalls.length > 0) {
+            console.log(
+              "[ReqAgent step] tools:",
+              stepResult.toolCalls.map((tc) => `${tc.toolName}(${JSON.stringify(tc.input).slice(0, 120)})`),
+            );
+          }
+          if (stepResult.text) {
+            console.log(`[ReqAgent step] text: ${stepResult.text.slice(0, 80)}...`);
+          }
+          console.log(`[ReqAgent step] finish: ${stepResult.finishReason}, toolResults: ${stepResult.toolResults.length}`);
+        },
+        onEvent: (event) => {
+          harnessEvents.push(event);
+          if (event.type === "tool_call") {
+            hooksFired.push(`pre_tool_use:${event.toolName}`);
+          }
+          if (event.type === "tool_result") {
+            hooksFired.push(`post_tool_use:${event.toolName}`);
+          }
+        },
       },
-    });
+    );
   } catch (error) {
     await runtimeCapabilities.mcpRuntime.cleanup();
     throw error;
@@ -224,7 +261,21 @@ export async function POST(req: Request) {
 
   return result.toUIMessageStreamResponse({
     originalMessages: uiMessages,
-    onFinish: async ({ messages: finalMessages }) => {
+    onFinish: async ({ messages: finalMessages }: { messages: UIMessage[] }) => {
+      // Finalize loop and emit loop_end event
+      const loopEnd = loopController.finalize();
+      harnessEvents.push(loopEnd);
+
+      void appendChatTrace(runtimeContext, "harness.loop_end", {
+        totalSteps: loopEnd.type === "loop_end" ? loopEnd.totalSteps : 0,
+        reason: loopEnd.type === "loop_end" ? loopEnd.reason : "unknown",
+        hooksFired,
+        permissionDecisions,
+        contextBudget: contextBudget.snapshot(),
+      }).catch((error) => {
+        console.error("[ReqAgent trace] failed to append harness trace", error);
+      });
+
       syncThreadUiMessages(runtimeContext.threadId, finalMessages);
       const nextWorkspaceSummary = mergeWorkspaceSummary(storedWorkspaceSummary, finalMessages);
       if (nextWorkspaceSummary) {

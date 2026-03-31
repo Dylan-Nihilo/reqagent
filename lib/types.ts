@@ -321,6 +321,12 @@ export type ReqAgentDebugMeta = {
   lastEvent?: ReqAgentDebugEvent;
   events?: ReqAgentDebugEvent[];
   steps?: ReqAgentDebugStep[];
+  // Harness observability (Phase 5)
+  loopConfig?: { maxSteps: number; interruptible: boolean };
+  hooksFired?: string[];
+  permissionDecisions?: Record<string, "allow" | "deny" | "ask">;
+  contextBudget?: { used: number; remaining: number; utilization: number };
+  compactionTriggered?: boolean;
 };
 
 export type ReqAgentDocxClarificationMeta = {

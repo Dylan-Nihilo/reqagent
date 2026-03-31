@@ -5,6 +5,8 @@ import { ensureProjectState } from "@/lib/project-state";
 export type ReqAgentProjectConfig = {
   defaultTemplateId: string;
   enabledSkillIds: string[];
+  /** Harness configuration — parsed separately by lib/harness/harness-config.ts */
+  harness?: Record<string, unknown>;
 };
 
 export const DEFAULT_PROJECT_CONFIG: ReqAgentProjectConfig = {

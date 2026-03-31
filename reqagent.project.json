@@ -1,4 +1,25 @@
 {
   "defaultTemplateId": "default",
-  "enabledSkillIds": ["cap-mermaid"]
+  "enabledSkillIds": ["cap-mermaid"],
+  "harness": {
+    "maxSteps": 12,
+    "stepTimeoutMs": 120000,
+    "interruptible": true,
+    "compaction": {
+      "strategy": "progressive",
+      "warningThreshold": 0.75,
+      "compactionThreshold": 0.85,
+      "retainRecentCount": 8
+    },
+    "permissions": {
+      "defaultPolicy": "cautious",
+      "overrides": [
+        { "tool": "writeFile", "action": "allow" }
+      ]
+    },
+    "hooks": {
+      "audit": true,
+      "budgetLimit": { "maxSteps": 20, "maxTokens": 100000 }
+    }
+  }
 }

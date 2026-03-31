@@ -5,6 +5,8 @@ import {
   setThreadArchived,
 } from "@/lib/db/store";
 
+export const dynamic = "force-dynamic";
+
 function readNonEmptyString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -65,4 +67,3 @@ export async function DELETE(_: Request, context: RouteContext) {
 
   return NextResponse.json({ thread });
 }
-

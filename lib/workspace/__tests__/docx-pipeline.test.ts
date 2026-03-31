@@ -10,7 +10,6 @@ import {
   fillDocxTemplate,
   removeEmptyParagraphs,
   removeEmptyTableRows,
-  replaceDocxPlaceholders,
 } from "../docx-support";
 import { DEFAULT_DOCX_TEMPLATE_PATH } from "../docx-template-path";
 

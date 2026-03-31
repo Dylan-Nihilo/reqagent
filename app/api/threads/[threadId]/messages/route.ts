@@ -7,6 +7,8 @@ import {
 } from "@/lib/db/store";
 import { AI_SDK_V6_MESSAGE_FORMAT, isReqAgentMessageRole } from "@/lib/threads";
 
+export const dynamic = "force-dynamic";
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

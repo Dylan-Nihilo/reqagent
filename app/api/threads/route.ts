@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createThread, ensureWorkspace, listThreadsByWorkspace } from "@/lib/db/store";
 import { DEFAULT_WORKSPACE_ID } from "@/lib/threads";
 
+export const dynamic = "force-dynamic";
+
 function readNonEmptyString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -36,4 +38,3 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ thread }, { status: 201 });
 }
-
