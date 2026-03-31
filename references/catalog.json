@@ -7,6 +7,13 @@
     "tags": ["template", "reference"]
   },
   {
+    "id": "ref-user-requirements-base-clean",
+    "label": "用户需求说明书_Base_clean",
+    "kind": "template",
+    "path": "references/raw/用户需求说明书_Base_clean.docx",
+    "tags": ["template", "base-clean"]
+  },
+  {
     "id": "ref-beijing-bank-attendance-enhanced",
     "label": "北京银行员工考勤管理系统需求说明书_模板增强版",
     "kind": "template",
@@ -40,5 +47,12 @@
     "kind": "template",
     "path": "references/raw/(零售水晶球三期)202502新增代发管理-非标准化代发业务单位管理需求说明书V1.1_20250106.docx",
     "tags": ["retail", "non-standardized"]
+  },
+  {
+    "id": "ref-retail-crystal-ball-clean-shell",
+    "label": "零售业务需求说明书_精细模板_clean",
+    "kind": "template",
+    "path": "references/raw/零售业务需求说明书_精细模板_clean.docx",
+    "tags": ["retail", "clean-shell"]
   }
 ]

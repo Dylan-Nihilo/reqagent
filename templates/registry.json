@@ -5,8 +5,10 @@
     "templatePath": "templates/profiles/default/template.docx",
     "summaryPath": "templates/profiles/default/summary.md",
     "sourceReferenceIds": [
+      "ref-user-requirements-base-clean",
       "ref-beijing-bank-attendance-enhanced",
       "ref-retail-crystal-ball",
+      "ref-retail-crystal-ball-clean-shell",
       "ref-user-requirements-template"
     ],
     "isDefault": true

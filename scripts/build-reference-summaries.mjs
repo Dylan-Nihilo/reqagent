@@ -20,6 +20,9 @@ async function summarizeReference(entry) {
   return {
     id: entry.id,
     label: entry.label,
+    kind: entry.kind,
+    path: entry.path,
+    tags: Array.isArray(entry.tags) ? entry.tags : [],
     size: stat.size,
     mtime: stat.mtime.toISOString(),
   };
@@ -28,6 +31,9 @@ async function summarizeReference(entry) {
 function formatSummary(summary) {
   return "# " + summary.label + "\n\n" +
     `- 模板 ID: ${summary.id}\n` +
+    `- 类型: ${summary.kind}\n` +
+    `- 路径: ${summary.path}\n` +
+    `- 标签: ${summary.tags.length > 0 ? summary.tags.join(", ") : "-"}\n` +
     `- 文件大小: ${summary.size} 字节\n` +
     `- 最近修改: ${summary.mtime}\n`;
 }
