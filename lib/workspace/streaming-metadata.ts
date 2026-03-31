@@ -1,7 +1,12 @@
 import type { ProviderInfo } from "@/lib/ai-provider";
 import type { ReqAgentMcpServerStatus } from "@/lib/mcp";
 import type { ReqAgentLoadedSkillMeta } from "@/lib/skills/types";
-import type { ToolInvocationViewState } from "@/lib/types";
+import type {
+  ReqAgentCapabilitySnapshotMeta,
+  ReqAgentDocxClarificationMeta,
+  ReqAgentPromptBlockDebug,
+  ToolInvocationViewState,
+} from "@/lib/types";
 import type { RuntimeContext } from "@/lib/workspace/context";
 import { summarizeForDebug } from "@/lib/workspace/context";
 
@@ -34,8 +39,11 @@ export function buildMetadataHandler(params: {
   mcpServers: ReqAgentMcpServerStatus[];
   providerInfo: ProviderInfo;
   toolInvocationStates: Record<string, ToolInvocationViewState>;
+  docxClarification?: ReqAgentDocxClarificationMeta;
   /** Skills matched for this message — determined before streaming starts. */
   matchedSkills?: ReqAgentLoadedSkillMeta[];
+  promptBlocks?: ReqAgentPromptBlockDebug[];
+  capabilitySnapshot?: ReqAgentCapabilitySnapshotMeta;
 }) {
   const debugEvents: DebugEvent[] = [];
   const debugSteps: DebugStep[] = [];
@@ -93,9 +101,10 @@ export function buildMetadataHandler(params: {
           threadKey: params.runtimeContext.threadKey,
           workspaceId: params.runtimeContext.workspaceId,
           workspaceKey: params.runtimeContext.workspaceKey,
-          workspaceDir: params.runtimeContext.workspaceDir,
           loadedSkills: params.matchedSkills?.length ? params.matchedSkills : undefined,
           mcpServers: isMilestone ? params.mcpServers : undefined,
+          promptBlocks: params.promptBlocks,
+          capabilitySnapshot: params.capabilitySnapshot,
           lastEvent: event,
           events: isMilestone ? [...debugEvents] : undefined,
           steps: isMilestone ? [...debugSteps] : undefined,
@@ -103,6 +112,7 @@ export function buildMetadataHandler(params: {
         model: params.providerInfo.model,
         providerName: params.providerInfo.providerName,
         publicThinking: "",
+        docxClarification: params.docxClarification,
         toolInvocationStates: { ...params.toolInvocationStates },
         wireApi: params.providerInfo.wireApi,
       };

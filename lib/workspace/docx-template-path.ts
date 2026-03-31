@@ -1,9 +1,3 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { PROJECT_DEFAULT_TEMPLATE_PATH } from "@/lib/project-paths";
 
-const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
-
-export const DEFAULT_DOCX_TEMPLATE_PATH = path.resolve(
-  MODULE_DIR,
-  "../../docs/用户需求说明书_Base_clean.docx",
-);
+export const DEFAULT_DOCX_TEMPLATE_PATH = PROJECT_DEFAULT_TEMPLATE_PATH;

@@ -2,6 +2,8 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { tool, jsonSchema } from "ai";
 import { execa } from "execa";
+import { readProjectConfig } from "@/lib/project-config";
+import { resolveProjectTemplate } from "@/lib/project-templates";
 import { DocumentBuilder } from "@/lib/workspace/document-builder";
 import type { RuntimeContext } from "@/lib/workspace/context";
 import { resolveWorkspacePath } from "@/lib/workspace/context";
@@ -13,7 +15,6 @@ import {
   loadMarkdownExportSource,
   renderRequirementsDocHtml,
 } from "@/lib/workspace/docx-support";
-import { DEFAULT_DOCX_TEMPLATE_PATH } from "@/lib/workspace/docx-template-path";
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -80,6 +81,14 @@ type GetDocumentStatusInput = {
 type FinalizeDocumentInput = {
   document_id: string;
   filename?: string;
+  templateId?: string;
+};
+
+type DocxTemplateSelection = {
+  absolutePath: string;
+  templateId?: string;
+  templateLabel: string;
+  templateSource: "project" | "user";
 };
 
 function getSafeDocxName(baseName: string) {
@@ -91,17 +100,78 @@ function getSafeDocxName(baseName: string) {
   return safeName.endsWith(".docx") ? safeName : `${safeName}.docx`;
 }
 
-async function resolveDefaultTemplatePath(workspaceDir: string) {
-  const repoTemplatePath = DEFAULT_DOCX_TEMPLATE_PATH;
-  const fallbackTemplatePath = path.join(workspaceDir, "docs", "用户需求说明书_Base_clean.docx");
+async function resolveDocxTemplateSelection({
+  runtimeContext,
+  templatePath,
+  templateId,
+}: {
+  runtimeContext: RuntimeContext;
+  templatePath?: string;
+  templateId?: string;
+}): Promise<{ selection: DocxTemplateSelection | null; error?: string }> {
+  const requestedTemplatePath = templatePath?.trim();
+  if (requestedTemplatePath) {
+    const resolvedTemplatePath = resolveWorkspacePath(
+      runtimeContext.workspaceDir,
+      requestedTemplatePath,
+    );
+    if (!resolvedTemplatePath) {
+      return { selection: null, error: "Template path outside workspace" };
+    }
 
-  const resolvedTemplatePath = await fs
-    .stat(repoTemplatePath)
-    .then(() => repoTemplatePath)
-    .catch(() => fallbackTemplatePath);
+    const exists = await fs.stat(resolvedTemplatePath).then(() => true).catch(() => false);
+    if (!exists) {
+      return {
+        selection: null,
+        error: `Template not found: ${requestedTemplatePath}`,
+      };
+    }
 
-  const templateExists = await fs.stat(resolvedTemplatePath).then(() => true).catch(() => false);
-  return templateExists ? resolvedTemplatePath : undefined;
+    return {
+      selection: {
+        absolutePath: resolvedTemplatePath,
+        templateLabel: path.basename(requestedTemplatePath),
+        templateSource: "user",
+      },
+    };
+  }
+
+  const requestedTemplateId = templateId?.trim();
+  if (requestedTemplateId) {
+    const resolved = await resolveProjectTemplate(requestedTemplateId);
+    if (!resolved) {
+      return {
+        selection: null,
+        error: `Project template not found: ${requestedTemplateId}`,
+      };
+    }
+
+    return {
+      selection: {
+        absolutePath: resolved.absoluteTemplatePath,
+        templateId: resolved.item.id,
+        templateLabel: resolved.item.label,
+        templateSource: "project",
+      },
+    };
+  }
+
+  const projectConfig = await readProjectConfig();
+  const resolved = await resolveProjectTemplate(projectConfig.defaultTemplateId)
+    ?? await resolveProjectTemplate();
+
+  if (!resolved) {
+    return { selection: null };
+  }
+
+  return {
+    selection: {
+      absolutePath: resolved.absoluteTemplatePath,
+      templateId: resolved.item.id,
+      templateLabel: resolved.item.label,
+      templateSource: "project",
+    },
+  };
 }
 
 function parseFeatureBlockIndex(sectionId: string) {
@@ -243,6 +313,7 @@ export function buildDocxTools(runtimeContext: RuntimeContext) {
         docDate?: string;
         includeToc?: boolean;
         templatePath?: string;
+        templateId?: string;
         templateProfileId?: string;
       }>({
         type: "object",
@@ -291,6 +362,11 @@ export function buildDocxTools(runtimeContext: RuntimeContext) {
               "Optional relative path to a DOCX template containing placeholders like {{需求背景}}. " +
               "When provided, export_docx fills the template instead of rendering from HTML.",
           },
+          templateId: {
+            type: "string",
+            description:
+              "Optional project-level template id resolved from templates/registry.json.",
+          },
           templateProfileId: {
             type: "string",
             description:
@@ -309,6 +385,7 @@ export function buildDocxTools(runtimeContext: RuntimeContext) {
         docDate,
         includeToc,
         templatePath,
+        templateId,
         templateProfileId,
       }) => {
         let documentSource;
@@ -335,66 +412,65 @@ export function buildDocxTools(runtimeContext: RuntimeContext) {
         const outputDir = path.join(runtimeContext.workspaceDir, "docs");
         const htmlPath = path.join(outputDir, `${safeName}.tmp.html`);
         const docxPath = path.join(outputDir, docxName);
-        const requestedTemplatePath = templatePath?.trim();
-        const repoTemplatePath = DEFAULT_DOCX_TEMPLATE_PATH;
-        const fallbackTemplatePath = path.join(
-          runtimeContext.workspaceDir,
-          "docs",
-          "用户需求说明书_Base_clean.docx",
-        );
-        const resolvedTemplatePath = requestedTemplatePath
-          ? resolveWorkspacePath(runtimeContext.workspaceDir, requestedTemplatePath)
-          : (await fs
-              .stat(repoTemplatePath)
-              .then(() => repoTemplatePath)
-              .catch(() => fallbackTemplatePath));
-        const templateRelativePath = requestedTemplatePath
-          ? requestedTemplatePath
-          : resolvedTemplatePath
-            ? path.relative(runtimeContext.workspaceDir, resolvedTemplatePath).replace(/\\/g, "/")
-            : undefined;
+        const templateResolution = await resolveDocxTemplateSelection({
+          runtimeContext,
+          templatePath,
+          templateId,
+        });
+        if (templateResolution.error && templatePath?.trim()) {
+          return {
+            error: templateResolution.error,
+            filename: docxName,
+            templatePath,
+          };
+        }
+        if (templateResolution.error && templateId?.trim()) {
+          return {
+            error: templateResolution.error,
+            filename: docxName,
+            templateId,
+          };
+        }
 
         try {
-          if (resolvedTemplatePath) {
-            const templateExists = await fs.stat(resolvedTemplatePath).then(() => true).catch(() => false);
+          if (templateResolution.selection) {
+            const templateBuildResult = buildDocxTemplatePayload(
+              documentSource.markdown,
+              docTitle,
+              {
+                organization,
+                author,
+                version,
+                docDate,
+              },
+              templateProfileId,
+            );
+            const fillResult = await fillDocxTemplate({
+              templatePath: templateResolution.selection.absolutePath,
+              outputPath: docxPath,
+              placeholderValues: templateBuildResult.placeholderValues,
+              featureBlocks: templateBuildResult.featureBlocks,
+              departmentRecords: templateBuildResult.departmentRecords,
+              buildResult: templateBuildResult,
+            });
 
-            if (templateExists) {
-              const templateBuildResult = buildDocxTemplatePayload(
-                documentSource.markdown,
-                docTitle,
-                {
-                  organization,
-                  author,
-                  version,
-                  docDate,
-                },
-                templateProfileId,
-              );
-              const fillResult = await fillDocxTemplate({
-                templatePath: resolvedTemplatePath,
-                outputPath: docxPath,
-                placeholderValues: templateBuildResult.placeholderValues,
-                featureBlocks: templateBuildResult.featureBlocks,
-                departmentRecords: templateBuildResult.departmentRecords,
-                buildResult: templateBuildResult,
-              });
+            const stat = await fs.stat(docxPath);
+            const relativePath = path.relative(runtimeContext.workspaceDir, docxPath).replace(/\\/g, "/");
 
-              const stat = await fs.stat(docxPath);
-              const relativePath = path.relative(runtimeContext.workspaceDir, docxPath).replace(/\\/g, "/");
-
-              return {
-                outputPath: relativePath,
-                downloadName: docxName,
-                title: docTitle,
-                sourcePath: documentSource.sourcePath,
-                templatePath: templateRelativePath,
-                templateProfileId: templateProfileId?.trim() || "user-requirements-base-v1",
-                previewMarkdown: documentSource.markdown.slice(0, 4000),
-                sizeBytes: stat.size,
-                qualityReport: fillResult.qualityReport,
-                relationIntegrity: fillResult.relationIntegrity,
-              };
-            }
+            return {
+              outputPath: relativePath,
+              downloadName: docxName,
+              title: docTitle,
+              sourcePath: documentSource.sourcePath,
+              templateId: templateResolution.selection.templateId,
+              templateLabel: templateResolution.selection.templateLabel,
+              templateSource: templateResolution.selection.templateSource,
+              templateProfileId: templateProfileId?.trim() || "user-requirements-base-v1",
+              previewMarkdown: documentSource.markdown.slice(0, 4000),
+              sizeBytes: stat.size,
+              qualityReport: fillResult.qualityReport,
+              relationIntegrity: fillResult.relationIntegrity,
+            };
           }
 
           const fullHtml = await renderRequirementsDocHtml({
@@ -418,7 +494,6 @@ export function buildDocxTools(runtimeContext: RuntimeContext) {
             downloadName: docxName,
             title: docTitle,
             sourcePath: documentSource.sourcePath,
-            templatePath: undefined,
             previewMarkdown: documentSource.markdown.slice(0, 4000),
             sizeBytes: stat.size,
           };
@@ -685,10 +760,14 @@ export function buildDocxTools(runtimeContext: RuntimeContext) {
             type: "string",
             description: "Optional output filename without extension. Defaults to the document title.",
           },
+          templateId: {
+            type: "string",
+            description: "Optional project-level template id resolved from templates/registry.json.",
+          },
         },
         required: ["document_id"],
       }),
-      execute: async ({ document_id, filename }) => {
+      execute: async ({ document_id, filename, templateId }) => {
         try {
           const builder = await DocumentBuilder.load(runtimeContext.workspaceDir, document_id);
           const status = builder.getStatus();
@@ -702,8 +781,17 @@ export function buildDocxTools(runtimeContext: RuntimeContext) {
             };
           }
 
-          const templatePath = await resolveDefaultTemplatePath(runtimeContext.workspaceDir);
-          if (!templatePath) {
+          const templateResolution = await resolveDocxTemplateSelection({
+            runtimeContext,
+            templateId,
+          });
+          if (templateResolution.error) {
+            return {
+              error: templateResolution.error,
+              document_id,
+            };
+          }
+          if (!templateResolution.selection) {
             return {
               error: "DOCX template not found",
               document_id,
@@ -726,7 +814,7 @@ export function buildDocxTools(runtimeContext: RuntimeContext) {
             builder.getTemplateProfile().id,
           );
           const fillResult = await fillDocxTemplate({
-            templatePath,
+            templatePath: templateResolution.selection.absolutePath,
             outputPath,
             placeholderValues: templateBuildResult.placeholderValues,
             featureBlocks: templateBuildResult.featureBlocks,
@@ -741,6 +829,9 @@ export function buildDocxTools(runtimeContext: RuntimeContext) {
           return {
             outputPath: relativePath,
             downloadName: docxName,
+            templateId: templateResolution.selection.templateId,
+            templateLabel: templateResolution.selection.templateLabel,
+            templateSource: templateResolution.selection.templateSource,
             qualityReport: fillResult.qualityReport,
             relationIntegrity: fillResult.relationIntegrity,
             sizeBytes: stat.size,

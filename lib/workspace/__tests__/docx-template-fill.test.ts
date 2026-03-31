@@ -167,7 +167,12 @@ describe("fillDocxTemplate cleanup integration", () => {
   it("repairs broken relationships and expands all feature blocks for requirements.md", async () => {
     const templatePath = DEFAULT_DOCX_TEMPLATE_PATH;
     const requirementsPath = path.join(
-      path.resolve(path.dirname(DEFAULT_DOCX_TEMPLATE_PATH), "..", "test", "2026-03-27", "员工考勤管理系统_最终验收包", "final", "requirements.md"),
+      process.cwd(),
+      "test",
+      "2026-03-27",
+      "员工考勤管理系统_最终验收包",
+      "final",
+      "requirements.md",
     );
 
     try {

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { DEFAULT_WORKSPACE_ID } from "@/lib/threads";
+import { extractTextFromMessageParts } from "@/lib/ui-message-utils";
 
 export const REQAGENT_ROOT_DIR = path.join(process.cwd(), ".reqagent");
 export const WORKSPACES_ROOT_DIR = path.join(REQAGENT_ROOT_DIR, "workspaces");
@@ -13,23 +14,8 @@ export function summarizeMessagesForFallback(messages: unknown) {
   if (!Array.isArray(messages)) return "chat";
 
   return messages
-    .flatMap((message) => {
-      if (!message || typeof message !== "object") return [];
-      const candidate = message as { role?: unknown; parts?: unknown; content?: unknown };
-      const parts = Array.isArray(candidate.parts)
-        ? candidate.parts
-        : Array.isArray(candidate.content)
-          ? candidate.content
-          : [];
-
-      return parts
-        .map((part) => {
-          if (!part || typeof part !== "object") return null;
-          const text = (part as { text?: unknown }).text;
-          return typeof text === "string" ? text : null;
-        })
-        .filter((value): value is string => Boolean(value));
-    })
+    .map((message) => extractTextFromMessageParts(message))
+    .filter((value): value is string => Boolean(value))
     .join("\n")
     .slice(0, 4_000);
 }
