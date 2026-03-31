@@ -1,0 +1,44 @@
+[
+  {
+    "id": "ref-user-requirements-template",
+    "label": "用户需求说明书参考模板",
+    "kind": "template",
+    "path": "references/raw/用户需求说明书参考模板.docx",
+    "tags": ["template", "reference"]
+  },
+  {
+    "id": "ref-beijing-bank-attendance-enhanced",
+    "label": "北京银行员工考勤管理系统需求说明书_模板增强版",
+    "kind": "template",
+    "path": "references/raw/北京银行员工考勤管理系统需求说明书_模板增强版.docx",
+    "tags": ["banking", "attendance"]
+  },
+  {
+    "id": "ref-beijing-bank-complaints",
+    "label": "北京银行客户投诉管理系统需求说明书",
+    "kind": "template",
+    "path": "references/raw/北京银行客户投诉管理系统需求说明书.docx",
+    "tags": ["banking", "complaints"]
+  },
+  {
+    "id": "ref-beijing-bank-staff",
+    "label": "北京银行员工管理系统需求说明书",
+    "kind": "template",
+    "path": "references/raw/北京银行员工管理系统需求说明书.docx",
+    "tags": ["banking", "hr"]
+  },
+  {
+    "id": "ref-beijing-bank-attendance",
+    "label": "北京银行员工考勤管理系统需求说明书",
+    "kind": "template",
+    "path": "references/raw/北京银行员工考勤管理系统需求说明书.docx",
+    "tags": ["banking", "attendance"]
+  },
+  {
+    "id": "ref-retail-crystal-ball",
+    "label": "(零售水晶球三期)202502新增代发管理-非标准化代发业务单位管理需求说明书V1.1",
+    "kind": "template",
+    "path": "references/raw/(零售水晶球三期)202502新增代发管理-非标准化代发业务单位管理需求说明书V1.1_20250106.docx",
+    "tags": ["retail", "non-standardized"]
+  }
+]

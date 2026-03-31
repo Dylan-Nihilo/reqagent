@@ -1,0 +1,14 @@
+[
+  {
+    "id": "default",
+    "label": "默认需求说明书模板",
+    "templatePath": "templates/profiles/default/template.docx",
+    "summaryPath": "templates/profiles/default/summary.md",
+    "sourceReferenceIds": [
+      "ref-beijing-bank-attendance-enhanced",
+      "ref-retail-crystal-ball",
+      "ref-user-requirements-template"
+    ],
+    "isDefault": true
+  }
+]
