@@ -11,6 +11,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function readNonEmptyString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 type RouteContext = {
   params: Promise<{
     threadId: string;
@@ -49,8 +53,9 @@ export async function POST(req: Request, context: RouteContext) {
   }
 
   const content = body.item.content;
+  const messageId = readNonEmptyString(body.item.id);
   if (
-    typeof body.item.id !== "string" ||
+    !messageId ||
     !isRecord(content) ||
     typeof content.role !== "string" ||
     !Array.isArray(content.parts)
@@ -63,7 +68,7 @@ export async function POST(req: Request, context: RouteContext) {
   }
 
   upsertStoredMessageEntry(threadId, {
-    id: body.item.id,
+    id: messageId,
     parentId: typeof body.item.parentId === "string" ? body.item.parentId : null,
     format: typeof body.item.format === "string" ? body.item.format : AI_SDK_V6_MESSAGE_FORMAT,
     content: {

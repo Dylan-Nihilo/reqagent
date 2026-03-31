@@ -288,17 +288,46 @@ export type ReqAgentDebugStep = {
   }>;
 };
 
+export type ReqAgentPromptBlockDebug = {
+  key: string;
+  dynamic: boolean;
+  charCount: number;
+};
+
+export type ReqAgentCapabilitySnapshotMeta = {
+  matchedSkills?: ReqAgentLoadedSkillMeta[];
+  mountedToolNames?: string[];
+  toolCatalog?: {
+    total: number;
+    summary: string;
+  };
+  mcpServers?: Array<{
+    id: string;
+    label: string;
+    state: ReqAgentMcpServerStatus["state"];
+    toolCount: number;
+  }>;
+};
+
 export type ReqAgentDebugMeta = {
   threadId?: string;
   threadKey?: string;
   workspaceId?: string;
   workspaceKey?: string;
-  workspaceDir?: string;
   loadedSkills?: ReqAgentLoadedSkillMeta[];
   mcpServers?: ReqAgentMcpServerStatus[];
+  promptBlocks?: ReqAgentPromptBlockDebug[];
+  capabilitySnapshot?: ReqAgentCapabilitySnapshotMeta;
   lastEvent?: ReqAgentDebugEvent;
   events?: ReqAgentDebugEvent[];
   steps?: ReqAgentDebugStep[];
+};
+
+export type ReqAgentDocxClarificationMeta = {
+  active: boolean;
+  roundsUsed: number;
+  roundsRemaining: number;
+  forceDraft: boolean;
 };
 
 /**
@@ -308,6 +337,7 @@ export type ReqAgentDebugMeta = {
 export type ReqAgentMessageMeta = {
   agentActivity: AgentActivity;
   activeRole: ReqAgentRole | null;
+  docxClarification?: ReqAgentDocxClarificationMeta;
   phaseLabel: string;
   publicThinking: string;
   model?: string;

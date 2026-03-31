@@ -182,3 +182,18 @@ lib/
 - Test tool UI by sending "测试工具" or "test tools" (triggers simulated stream)
 - When adding tools: always use `inputSchema` + `jsonSchema<T>()`, never `parameters`
 - When adding multi-step: always use `stopWhen: stepCountIs(N)`, never `maxSteps`
+
+## UI Style Contract
+
+ReqAgent 的前端风格固定为 `editorial workbench`，这是项目级硬约束，不允许每次实现时重新发明视觉语言。
+
+- 整体气质：冷静、克制、专业，像编辑台和工作台，不像营销页、不像 demo、不像消费级聊天玩具
+- 视觉层级：优先使用排版、细线、节奏、留白建立层次，不依赖厚背景、重阴影、发光、毛玻璃
+- 容器策略：默认不要做“大卡片套小卡片”；message、tool、interactive QA 这类 surface 应更接近线性工作流条目
+- 交互反馈：hover 和 active 以 `translate / opacity / border-color / underline / rail` 为主；禁止为了“有设计感”乱加背景变化
+- 色彩策略：以中性色和轻微色偏为主，避免高饱和渐变、科技蓝紫、霓虹、纯黑纯白对撞
+- 圆角策略：偏克制，优先小圆角或直角语言；避免大面积 `999px pill` 堆满界面
+- 工具与 QA surface：必须轻量、可折叠、可快速扫描；默认像精炼的执行条或决策条，不像一整张表单卡
+- 信息密度：优先摘要行 + 单个展开区，不要把多个问题或多个状态同时摊成厚重长面板
+- 动画节奏：控制在 `120-180ms`，只做轻微位移和显隐，不做弹跳、缩放秀、装饰性过场
+- 一致性要求：首页、线程页、gallery、tool、artifact、interactive QA 必须共用同一设计语言，禁止出现“局部另起一套皮肤”

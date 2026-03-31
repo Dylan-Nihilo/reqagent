@@ -4,12 +4,11 @@ import { z } from "zod";
 import { createMCPClient, type ListToolsResult, type MCPClient } from "@ai-sdk/mcp";
 import { Experimental_StdioMCPTransport } from "@ai-sdk/mcp/mcp-stdio";
 import { reqAgentProvider, supportsNativeResponsesMcp } from "@/lib/ai-provider";
+import { PROJECT_MCP_CONFIG_PATH } from "@/lib/project-paths";
+import { ensureProjectState } from "@/lib/project-state";
 import type { McpToolRegistryMeta, ToolRegistryItem } from "@/lib/tool-registry";
 
-const DEFAULT_MCP_CONFIG_PATHS = [
-  path.join(process.cwd(), "reqagent.mcp.json"),
-  path.join(process.cwd(), ".reqagent", "mcp.json"),
-];
+const DEFAULT_MCP_CONFIG_PATHS = [PROJECT_MCP_CONFIG_PATH];
 
 const executionModeSchema = z.enum(["proxy", "auto"]);
 
@@ -139,6 +138,8 @@ async function readConfigFromFile(targetPath: string, runtimeValues: Record<stri
 }
 
 async function loadMcpConfig(runtimeValues: Record<string, string | undefined>): Promise<{ servers: McpServerConfig[]; source?: string }> {
+  await ensureProjectState();
+
   const inlineServers = readEnv("REQAGENT_MCP_SERVERS");
   if (inlineServers) {
     const raw = JSON.parse(inlineServers) as unknown;
@@ -284,12 +285,14 @@ function buildRegistryItem(input: {
     name: input.name,
     title: input.title,
     category: "mcp",
+    source: `mcp:${input.mcp.serverId}`,
     description: input.description,
     usageHint: input.usageHint,
     riskLevel: "caution",
     preferredOrder: input.preferredOrder,
     supportsApproval: false,
     rendererKind: "mcp",
+    promptExposure: "on-demand",
     mcp: input.mcp,
   };
 }
@@ -301,15 +304,21 @@ function summarizeRemoteTools(toolNames: string[]) {
 }
 
 function buildPromptSection(servers: ReqAgentMcpServerStatus[]) {
-  const readyServers = servers.filter((server) => server.state === "ready" && server.toolCount > 0);
-  if (readyServers.length === 0) {
-    return "当前没有可用的 MCP 工具。";
+  if (servers.length === 0) {
+    return "";
   }
 
   return [
-    "动态 MCP 工具（外部服务）:",
-    ...readyServers.map((server) => `- ${server.label}: ${summarizeRemoteTools(server.toolNames)}`),
-    "当任务涉及第三方系统、远程知识库、浏览器自动化或外部 API 时，优先使用对应的 MCP 工具，不要用 bash 伪造远程调用。",
+    "MCP 服务器概况：",
+    ...servers.map((server) => {
+      const stateLabel = server.state === "ready"
+        ? "ready"
+        : server.state === "disabled"
+          ? "disabled"
+          : "failed";
+      const toolSummary = server.toolCount > 0 ? summarizeRemoteTools(server.toolNames) : "无可用工具";
+      return `- ${server.label} [${stateLabel}] (${server.toolCount}): ${toolSummary}`;
+    }),
   ].join("\n");
 }
 

@@ -1,4 +1,5 @@
 import { normalizeToolStatus, type AgentActivity, type ReqAgentToolStatus } from "@/lib/types";
+import { readMessageParts } from "@/lib/ui-message-utils";
 
 export type ReqMessagePartKind = "text" | "reasoning" | "tool" | "source" | "file" | "image" | "unknown";
 export type ReqMessagePartSurface = "primary" | "process" | "execution" | "reference" | "attachment" | "unknown";
@@ -124,11 +125,12 @@ export function getReqMessagePartSpec(kind: ReqMessagePartKind): ReqMessagePartS
 }
 
 export function summarizeMessageParts(content: unknown): ReqMessagePartSummary[] {
-  if (!Array.isArray(content)) {
+  const parts = readMessageParts(content);
+  if (parts.length === 0) {
     return [];
   }
 
-  return content.map((part, index) => summarizeMessagePart(part, index));
+  return parts.map((part, index) => summarizeMessagePart(part, index));
 }
 
 export function hasRenderableMessageOutput(content: unknown) {

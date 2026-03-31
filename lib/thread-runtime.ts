@@ -211,6 +211,8 @@ function createReqAgentThreadHistoryAdapter(
         async append(item: HistoryWriteItem) {
           const current = aui.threadListItem().getState();
           const remoteId = current.remoteId ?? (await aui.threadListItem().initialize()).remoteId;
+          const messageId = formatAdapter.getId(item.message).trim();
+          if (!messageId) return;
 
           await fetchJson<{ ok: true }>(
             `/api/threads/${encodeURIComponent(remoteId)}/messages`,
@@ -222,7 +224,7 @@ function createReqAgentThreadHistoryAdapter(
               body: JSON.stringify({
                 workspaceId,
                 item: {
-                  id: formatAdapter.getId(item.message),
+                  id: messageId,
                   parentId: item.parentId,
                   format: formatAdapter.format,
                   content: formatAdapter.encode(item),
@@ -235,6 +237,8 @@ function createReqAgentThreadHistoryAdapter(
         async update(item: HistoryWriteItem) {
           const current = aui.threadListItem().getState();
           const remoteId = current.remoteId ?? (await aui.threadListItem().initialize()).remoteId;
+          const messageId = formatAdapter.getId(item.message).trim();
+          if (!messageId) return;
 
           await fetchJson<{ ok: true }>(
             `/api/threads/${encodeURIComponent(remoteId)}/messages`,
@@ -246,7 +250,7 @@ function createReqAgentThreadHistoryAdapter(
               body: JSON.stringify({
                 workspaceId,
                 item: {
-                  id: formatAdapter.getId(item.message),
+                  id: messageId,
                   parentId: item.parentId,
                   format: formatAdapter.format,
                   content: formatAdapter.encode(item),

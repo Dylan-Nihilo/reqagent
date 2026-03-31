@@ -1,9 +1,11 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { PROJECT_SKILLS_ROOT } from "@/lib/project-paths";
+import { ensureProjectState } from "@/lib/project-state";
 import type { LoadedSkill, SkillManifest, SkillRuntime } from "./types";
 
 /** Root directory for skill definitions. */
-const SKILLS_ROOT = path.join(process.cwd(), ".reqagent", "skills");
+const SKILLS_ROOT = PROJECT_SKILLS_ROOT;
 
 /** Maximum characters of merged knowledge content per skill. */
 const KNOWLEDGE_CAP = 32_000;
@@ -59,8 +61,9 @@ async function loadKnowledgeDir(dir: string): Promise<string> {
 // Public API
 // ---------------------------------------------------------------------------
 
-/** Scan `.reqagent/skills/{id}/skill.json` and return all valid manifests. */
+/** Scan `skills/{id}/skill.json` and return all valid manifests. */
 export async function listSkills(): Promise<SkillManifest[]> {
+  await ensureProjectState();
   if (!(await fileExists(SKILLS_ROOT))) return [];
 
   const entries = await readdir(SKILLS_ROOT, { withFileTypes: true });
@@ -87,6 +90,7 @@ export async function listSkills(): Promise<SkillManifest[]> {
 
 /** Load a single skill by id. */
 export async function loadSkill(id: string): Promise<LoadedSkill | null> {
+  await ensureProjectState();
   const skillDir = path.join(SKILLS_ROOT, id);
   const manifestPath = path.join(skillDir, "skill.json");
   if (!(await fileExists(manifestPath))) return null;

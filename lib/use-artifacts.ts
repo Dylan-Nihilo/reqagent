@@ -3,9 +3,12 @@
 import { useMemo } from "react";
 import { useThread } from "@assistant-ui/react";
 import { parseToolArgsText } from "@/lib/types";
+import { getReqAgentEnvelope } from "@/lib/workspace/tool-envelope";
+import { readMessageParts } from "@/lib/ui-message-utils";
 
 export type ReqArtifactKind = "brief" | "stories" | "document" | "knowledge";
 export type ReqArtifactIconName = "brief" | "stories" | "document" | "knowledge" | "docx";
+export type ReqArtifactPreviewMode = "markdown" | "code" | "text";
 
 export type ReqArtifactItem = {
   id: string;
@@ -15,6 +18,7 @@ export type ReqArtifactItem = {
   summary: string;
   meta: string;
   markdown: string;
+  previewMode: ReqArtifactPreviewMode;
   exportName: string;
   toolName: string;
   order: number;
@@ -34,6 +38,7 @@ export type ReqPendingArtifact = {
 type ThreadMessageLike = {
   role?: unknown;
   content?: unknown;
+  parts?: unknown;
 };
 
 type ToolCallPartLike = {
@@ -63,9 +68,11 @@ function deriveArtifacts(messages: readonly ThreadMessageLike[], workspaceId?: s
   let order = 0;
 
   for (const message of messages) {
-    if (message?.role !== "assistant" || !Array.isArray(message.content)) continue;
+    if (message?.role !== "assistant") continue;
+    const parts = readMessageParts(message);
+    if (parts.length === 0) continue;
 
-    for (const part of message.content) {
+    for (const part of parts) {
       if (!isToolCallPart(part)) continue;
 
       order += 1;
@@ -123,6 +130,10 @@ function buildArtifact({
   workspaceId?: string;
 }): ReqArtifactItem | null {
   const output = asRecord(result);
+  const envelopeArtifact = buildArtifactFromEnvelope(result, toolCallId, toolName, order, workspaceId);
+  if (envelopeArtifact) {
+    return envelopeArtifact;
+  }
 
   switch (toolName) {
     case "analyze_requirements":
@@ -150,6 +161,56 @@ function buildArtifact({
     default:
       return null;
   }
+}
+
+function buildArtifactFromEnvelope(
+  result: unknown,
+  toolCallId: string,
+  toolName: string,
+  order: number,
+  workspaceId?: string,
+): ReqArtifactItem | null {
+  const envelope = getReqAgentEnvelope(result);
+  const artifact = envelope?.artifact;
+  if (!artifact) return null;
+
+  const previewMode = artifact.previewMode
+    ?? inferArtifactPreviewMode(artifact.path || artifact.downloadPath || artifact.label);
+  const downloadUrl = artifact.downloadPath && workspaceId
+    ? `/api/workspace/download?workspaceId=${encodeURIComponent(workspaceId)}&path=${encodeURIComponent(artifact.downloadPath)}`
+    : undefined;
+  const metaParts = [
+    artifact.path,
+    artifact.downloadPath && artifact.downloadPath !== artifact.path ? artifact.downloadPath : null,
+    ...Object.entries(envelope?.metrics ?? {})
+      .slice(0, 2)
+      .map(([key, value]) => `${key} ${String(value)}`),
+  ].filter((value): value is string => Boolean(value));
+  const normalizedKind = artifact.kind === "knowledge" || artifact.kind === "catalog"
+    ? "knowledge"
+    : "document";
+  const normalizedIcon = artifact.icon
+    ?? (artifact.downloadPath?.toLowerCase().endsWith(".docx")
+      ? "docx"
+      : normalizedKind === "knowledge"
+        ? "knowledge"
+        : "document");
+  const exportName = fileNameFromPath(artifact.downloadPath || artifact.path || `${toolName}.md`);
+
+  return {
+    id: `artifact:${toolCallId}:${artifact.downloadPath || artifact.path || toolName}`,
+    kind: normalizedKind,
+    icon: normalizedIcon,
+    label: artifact.label,
+    summary: artifact.summary,
+    meta: metaParts.join(" · ") || toolName,
+    markdown: artifact.content || (artifact.downloadPath ? `*已生成 ${exportName}*` : artifact.summary),
+    previewMode,
+    exportName,
+    toolName,
+    order,
+    downloadUrl,
+  };
 }
 
 function buildPendingArtifact({
@@ -195,12 +256,13 @@ function buildPendingArtifact({
       };
     case "writeFile": {
       const targetPath = normalizeString(args?.path);
-      if (!targetPath.toLowerCase().endsWith(".md")) return null;
+      if (!targetPath) return null;
+      const previewMode = inferArtifactPreviewMode(targetPath);
       return {
         id: `pending:${toolCallId}`,
         kind: "document",
         icon: "document",
-        label: targetPath.includes("requirements") ? "需求文档" : fileNameFromPath(targetPath),
+        label: buildWritableArtifactLabel(targetPath, previewMode),
         summary: `正在写入 ${targetPath}…`,
         toolName,
       };
@@ -273,6 +335,7 @@ function buildBriefArtifact(
       "## 歧义项",
       listOrFallback(ambiguities, "暂无"),
     ].join("\n"),
+    previewMode: "markdown",
     exportName: `${slugify(projectName)}-analysis.md`,
     toolName,
     order,
@@ -319,6 +382,7 @@ function buildStoriesArtifact(
         ];
       }),
     ].join("\n"),
+    previewMode: "markdown",
     exportName: `${slugify(projectName)}-stories.md`,
     toolName,
     order,
@@ -347,6 +411,7 @@ function buildDocumentArtifactFromOutput(
     summary: projectName,
     meta: `${formatCount(charCount)} chars · Markdown`,
     markdown: content,
+    previewMode: "markdown",
     exportName: `${slugify(projectName)}-requirements.md`,
     toolName,
     order,
@@ -361,23 +426,25 @@ function buildDocumentArtifactFromWrite(
   order: number,
 ): ReqArtifactItem | null {
   const targetPath = normalizeString(args?.path);
-  const content = normalizeString(args?.content);
+  const content = asString(args?.content);
+  const mode = normalizeString(output?.mode) || "overwrite";
 
-  if (!targetPath.toLowerCase().endsWith(".md") || !content) return null;
+  if (!targetPath || !content) return null;
 
-  const title = targetPath.includes("requirements")
-    ? "需求文档"
-    : fileNameFromPath(targetPath);
+  const previewMode = inferArtifactPreviewMode(targetPath);
+  const title = buildWritableArtifactLabel(targetPath, previewMode);
   const charCount = normalizeNumber(output?.charCount) ?? content.length;
+  const sizeBytes = normalizeNumber(output?.sizeBytes);
 
   return {
     id: `artifact:document:${targetPath}`,
     kind: "document",
     icon: "document",
     label: title,
-    summary: headingFromMarkdown(content) || targetPath,
-    meta: `${formatCount(charCount)} chars · ${targetPath}`,
+    summary: buildWritableArtifactSummary(targetPath, content, previewMode),
+    meta: buildWritableArtifactMeta({ charCount, mode, path: targetPath, sizeBytes }),
     markdown: content,
+    previewMode,
     exportName: fileNameFromPath(targetPath),
     toolName,
     order,
@@ -393,7 +460,7 @@ function buildDocumentArtifactFromRead(
   if (!output) return null;
 
   const targetPath = normalizeString(output.path);
-  const content = normalizeString(output.content);
+  const content = asString(output.content);
   if (!targetPath.toLowerCase().endsWith(".md") || !content) return null;
 
   return {
@@ -404,6 +471,7 @@ function buildDocumentArtifactFromRead(
     summary: headingFromMarkdown(content) || targetPath,
     meta: `${formatCount(normalizeNumber(output.charCount) ?? content.length)} chars · ${targetPath}`,
     markdown: content,
+    previewMode: "markdown",
     exportName: fileNameFromPath(targetPath),
     toolName,
     order,
@@ -441,6 +509,7 @@ function buildKnowledgeArtifact(
     ]
       .filter((line): line is string => Boolean(line))
       .join("\n"),
+    previewMode: "markdown",
     exportName: `knowledge-${slugify(source)}.md`,
     toolName,
     order,
@@ -469,6 +538,7 @@ function buildFetchedReferenceArtifact(
     summary: host,
     meta: `${formatCount(normalizeNumber(output.charCount) ?? content.length)} chars · ${host}`,
     markdown: content,
+    previewMode: "markdown",
     exportName: `${slugify(host)}-reference.md`,
     toolName,
     order,
@@ -506,6 +576,7 @@ function buildDocxExportArtifact(
       ? `${(sizeBytes / 1024).toFixed(1)} KB · ${downloadName}`
       : downloadName,
     markdown: previewMarkdown || `*文档已导出: ${downloadName}*`,
+    previewMode: "markdown",
     exportName: downloadName,
     toolName,
     order,
@@ -547,6 +618,7 @@ function buildDocxParseArtifact(
       "",
       textContent.slice(0, 3000),
     ].join("\n"),
+    previewMode: "markdown",
     exportName: `${fileNameFromPath(targetPath).replace(/\.docx$/i, "")}-structure.md`,
     toolName,
     order,
@@ -605,6 +677,10 @@ function normalizeString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function asString(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
 function normalizeNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -614,9 +690,79 @@ function headingFromMarkdown(markdown: string) {
   return match?.[1]?.trim() ?? "";
 }
 
+function firstMeaningfulLine(content: string) {
+  const line = content
+    .split("\n")
+    .map((item) => item.trim())
+    .find((item) => item.length > 0);
+
+  return line ? truncateText(line, 96) : "";
+}
+
+function inferArtifactPreviewMode(targetPath: string): ReqArtifactPreviewMode {
+  if (/\.(md|markdown|mdx)$/i.test(targetPath)) {
+    return "markdown";
+  }
+
+  if (/\.(tsx?|jsx?|json|ya?ml|css|scss|less|html?|xml|sh|bash|zsh|py|rb|go|rs|java|kt|swift|sql|toml|ini|env)$/i.test(targetPath)) {
+    return "code";
+  }
+
+  return "text";
+}
+
+function buildWritableArtifactLabel(targetPath: string, previewMode: ReqArtifactPreviewMode) {
+  if (previewMode === "markdown" && targetPath.includes("requirements")) {
+    return "需求文档";
+  }
+
+  return fileNameFromPath(targetPath);
+}
+
+function buildWritableArtifactSummary(
+  targetPath: string,
+  content: string,
+  previewMode: ReqArtifactPreviewMode,
+) {
+  if (previewMode === "markdown") {
+    return headingFromMarkdown(content) || targetPath;
+  }
+
+  if (previewMode === "code") {
+    return targetPath;
+  }
+
+  return firstMeaningfulLine(content) || targetPath;
+}
+
+function buildWritableArtifactMeta({
+  charCount,
+  mode,
+  path,
+  sizeBytes,
+}: {
+  charCount: number;
+  mode: string;
+  path: string;
+  sizeBytes: number | null;
+}) {
+  const sizeLabel = sizeBytes !== null ? formatBytes(sizeBytes) : `${formatCount(charCount)} chars`;
+  return `${mode} · ${sizeLabel} · ${path}`;
+}
+
 function fileNameFromPath(targetPath: string) {
   const segments = targetPath.split("/");
   return segments[segments.length - 1] || targetPath;
+}
+
+function formatBytes(sizeBytes: number) {
+  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`;
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function truncateText(value: string, maxLength: number) {
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
 }
 
 function formatCount(value: number) {

@@ -24,7 +24,7 @@ export function useAgentActivity(): AgentActivity {
     if (meta?.agentActivity) return meta.agentActivity;
 
     // Layer 1: infer from message parts
-    const activity = inferAgentActivityFromMessageParts(last.content);
+    const activity = inferAgentActivityFromMessageParts(last);
     return activity ?? "responding";
   });
 }

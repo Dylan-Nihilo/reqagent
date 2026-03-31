@@ -1,4 +1,4 @@
-/** Skill manifest stored in `.reqagent/skills/<id>/skill.json`. */
+/** Skill manifest stored in `skills/<id>/skill.json`. */
 export interface SkillManifest {
   id: string;
   name: string;

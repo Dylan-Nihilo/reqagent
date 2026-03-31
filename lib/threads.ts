@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import { extractTextFromMessageParts } from "@/lib/ui-message-utils";
 
 export const DEFAULT_WORKSPACE_ID = "ws_reqagent_default";
 export const DEFAULT_WORKSPACE_TITLE = "ReqAgent Workspace";
@@ -51,44 +52,24 @@ export function truncateThreadTitle(value: string, maxLength = THREAD_TITLE_MAX_
 }
 
 export function extractTextFromUIMessageParts(parts: UIMessage["parts"] | undefined) {
-  if (!Array.isArray(parts)) return "";
-
-  return normalizeWhitespace(
-    parts
-      .flatMap((part) => {
-        if (!part || typeof part !== "object") return [];
-        const candidate = part as { type?: unknown; text?: unknown };
-        if (candidate.type === "text" && typeof candidate.text === "string") {
-          return [candidate.text];
-        }
-        return [];
-      })
-      .join(" "),
-  );
+  return extractTextFromMessageParts(parts);
 }
 
 export function extractTextFromThreadMessages(
   messages: ReadonlyArray<{
     role: string;
-    content?: ReadonlyArray<{ type?: string; text?: string }>;
+    parts?: unknown;
+    content?: unknown;
   }>,
 ) {
   for (const message of messages) {
     if (message.role !== "user") continue;
-    const text = normalizeWhitespace(
-      (message.content ?? [])
-        .flatMap((part) => (part.type === "text" && typeof part.text === "string" ? [part.text] : []))
-        .join(" "),
-    );
+    const text = extractTextFromMessageParts(message);
     if (text) return text;
   }
 
   for (const message of messages) {
-    const text = normalizeWhitespace(
-      (message.content ?? [])
-        .flatMap((part) => (part.type === "text" && typeof part.text === "string" ? [part.text] : []))
-        .join(" "),
-    );
+    const text = extractTextFromMessageParts(message);
     if (text) return text;
   }
 
@@ -115,4 +96,3 @@ export function buildThreadTitleFromMessages(
 export function isReqAgentMessageRole(value: unknown): value is ReqAgentMessageRole {
   return value === "user" || value === "assistant" || value === "system";
 }
-
